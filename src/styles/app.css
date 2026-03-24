@@ -1,0 +1,24 @@
+.app {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.toast-error {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--danger);
+  color: var(--danger-on);
+  padding: 12px 20px;
+  border-radius: 0;
+  border: 2px solid var(--border);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  z-index: 1000;
+  max-width: 480px;
+  text-align: center;
+  font-weight: 700;
+}

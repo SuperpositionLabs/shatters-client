@@ -1,0 +1,16 @@
+[package]
+name = "shatters-bridge"
+version = "0.1.0"
+edition = "2021"
+description = "Rust FFI bridge to the Shatters C++ SDK"
+
+[lib]
+crate-type = ["lib"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
+
+[build-dependencies]
+bindgen = "0.71"
+cc = "1"

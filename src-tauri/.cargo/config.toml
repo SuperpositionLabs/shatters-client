@@ -1,0 +1,3 @@
+# Diretório de build local ao crate (evita misturar com outro clone via variável global).
+[build]
+target-dir = "target"

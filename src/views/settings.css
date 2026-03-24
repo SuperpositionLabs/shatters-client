@@ -1,0 +1,72 @@
+.settings-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-secondary);
+}
+
+.settings-header {
+  padding: 20px 24px;
+  border-bottom: 2px solid var(--border);
+  background: var(--bg-primary);
+}
+
+.settings-header h2 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.settings-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 28px 24px;
+}
+
+.settings-section {
+  margin-bottom: 40px;
+}
+
+.settings-section h3 {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 16px;
+  border-bottom: 2px solid var(--border);
+  padding-bottom: 8px;
+}
+
+.settings-field {
+  margin-bottom: 16px;
+}
+
+.settings-field .field-label {
+  font-size: var(--text-xs);
+  color: var(--text-primary);
+  font-weight: 700;
+  margin-bottom: 6px;
+  display: block;
+}
+
+.settings-mono {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  background: var(--bg-input);
+  padding: 10px 12px;
+  border-radius: 0;
+  border: 1px solid var(--border);
+  word-break: break-all;
+  user-select: all;
+}
+
+.settings-desc {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  margin-bottom: 14px;
+  max-width: 560px;
+  line-height: 1.6;
+}
