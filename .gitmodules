@@ -1,0 +1,3 @@
+[submodule "shatters-sdk"]
+	path = shatters-sdk
+	url = https://github.com/superpositionlabs/shatters-sdk

@@ -1,0 +1,66 @@
+# -----------------------------
+# OS / editor cruft
+# -----------------------------
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# -----------------------------
+# Node / Vite / TypeScript
+# -----------------------------
+node_modules/
+dist/
+.npm/
+.pnpm-store/
+.yarn/
+.eslintcache
+*.tsbuildinfo
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# -----------------------------
+# Tauri / Rust
+# -----------------------------
+src-tauri/target/
+src-tauri/**/target/
+**/*.rs.bk
+
+# -----------------------------
+# CMake / C++ (SDK)
+# -----------------------------
+shatters-sdk/build/
+shatters-sdk/**/CMakeFiles/
+shatters-sdk/**/CMakeCache.txt
+shatters-sdk/**/cmake_install.cmake
+shatters-sdk/**/CTestTestfile.cmake
+shatters-sdk/**/compile_commands.json
+shatters-sdk/**/build.ninja
+shatters-sdk/**/.ninja_*
+shatters-sdk/**/Testing/
+
+# -----------------------------
+# Local DB/runtime artifacts
+# -----------------------------
+*.db
+*.db-shm
+*.db-wal
+
+# -----------------------------
+# Optional: local archives/binaries
+# -----------------------------
+*.log
+*.tmp
+*.bak
