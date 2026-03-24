@@ -1,12 +1,13 @@
 <p align="center">
-  <strong>Shatters Desktop Client</strong>
+  <img src="public/branding.svg" alt="shatters client" width="300"/>
 </p>
 
 <p align="center">
-  Tauri v2 + SolidJS desktop client for end-to-end encrypted messaging.
+  <strong>Tauri v2 + SolidJS desktop client for end-to-end encrypted messaging.</strong>
 </p>
 
 <p align="center">
+  <a href="#features">Features</a>
   <a href="#getting-started">Getting Started</a>
   <a href="#development">Development</a>
   <a href="#license">License</a>
@@ -14,81 +15,85 @@
 
 ---
 
-Desktop client for [Shatters](https://github.com/SuperpositionLabs/shatters). Built with [Tauri v2](https://v2.tauri.app/) (Rust backend) and [SolidJS](https://www.solidjs.com/) (TypeScript frontend). Communicates with the C++ SDK via a Rust FFI bridge.
+Desktop client for [Shatters](https://github.com/SuperpositionLabs/shatters), built with [Tauri v2](https://v2.tauri.app/) (Rust backend) and [SolidJS](https://www.solidjs.com/) (TypeScript frontend). Integrates the C++ SDK through a Rust FFI bridge.
+
+## Features
+
+| Feature | Description |
+|---|---|
+| **Cross-platform Desktop** | Native shell with Tauri v2 for Linux/Windows/macOS builds |
+| **Encrypted Messaging UI** | Contacts, chat, login, and settings views for secure messaging workflows |
+| **SDK Bridge** | Rust bridge crate (`src-tauri/bridge/`) that links against `shatters-sdk` |
+| **Fast Frontend Iteration** | Vite + SolidJS development workflow with instant rebuilds |
 
 ## Getting Started
 
 ### Prerequisites
 
-| Tool | Version | Install |
+| Tool | Version | Notes |
 |---|---|---|
-| Rust | >= 1.75 | [rustup.rs](https://rustup.rs/) |
-| Node.js | >= 18 | [nodejs.org](https://nodejs.org/) or `apt install nodejs npm` |
-| C++ compiler | GCC 13+ or Clang 17+ | For building shatters-sdk |
-| CMake | >= 3.25 | `apt install cmake` |
-| Ninja | any | `apt install ninja-build` |
+| Rust | >= 1.75 | Install with [rustup](https://rustup.rs/) |
+| Node.js | >= 18 | Includes npm for frontend dependencies |
+| C++ compiler | GCC 13+ or Clang 17+ | Needed to compile `shatters-sdk` |
+| CMake | >= 3.25 | Build system for the SDK |
+| Ninja | any | Recommended generator on Linux |
 
-### Build
-
-#### 1. Build the SDK first
-
-The client depends on the C++ SDK static library. Build it first:
+### 1. Build the SDK
 
 ```bash
 cd shatters-sdk
 
-# bootstrap vcpkg (one-time)
+# one-time bootstrap
 ./vcpkg/bootstrap-vcpkg.sh
 
-# build
+# configure and build
 cmake --preset linux-release
 cmake --build build/linux-release
 ```
 
-#### 2. Install frontend dependencies
+### 2. Install Client Dependencies
 
 ```bash
-cd shatters-client
+cd ..
 npm install
 ```
 
-#### 3. Install the Tauri CLI
+### 3. Run in Development
 
 ```bash
-cargo install tauri-cli --version "^2.0"
+# frontend-only dev server
+npm run dev
+
+# desktop app with Tauri
+npm run tauri dev
 ```
 
-#### 4. Build the desktop app
-
-Set environment variables pointing to the SDK:
+### 4. Production Build
 
 ```bash
-export SHATTERS_SDK_INCLUDE="$(pwd)/../shatters-sdk/include"
-export SHATTERS_SDK_LIB="$(pwd)/../shatters-sdk/build/linux-release"
-
-# development mode (hot-reload)
-cargo tauri dev
-
-# production build
-cargo tauri build
+npm run tauri build
 ```
 
-The production binary will be in `src-tauri/target/release/shatters-client`.
+The app binary is generated under `src-tauri/target/release/`.
 
 ## Development
 
-### Frontend dev server
+Set SDK paths when your environment does not auto-discover headers and libraries:
 
 ```bash
-npm run dev          # starts Vite on http://localhost:3000
+export SHATTERS_SDK_INCLUDE="$(pwd)/shatters-sdk/include"
+export SHATTERS_SDK_LIB="$(pwd)/shatters-sdk/build/linux-release"
 ```
 
-### Tauri dev mode
+Useful commands:
 
 ```bash
-cargo tauri dev      # launches app with hot-reload frontend
+npm run dev
+npm run build
+npm run tauri dev
+npm run tauri build
 ```
 
 ## License
 
-GPLv3 - see [LICENSE](../shatters-sdk/LICENSE).
+GPLv3 - see [shatters-sdk/LICENSE](shatters-sdk/LICENSE).
