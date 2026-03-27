@@ -1,4 +1,4 @@
-import { Component, For, createSignal } from "solid-js";
+import { Component, For, Show, createSignal } from "solid-js";
 import { store } from "../store";
 import { api } from "../api";
 import Sidebar from "../components/Sidebar";
@@ -9,6 +9,7 @@ const Contacts: Component = () => {
   const [publicKey, setPublicKey] = createSignal("");
   const [displayName, setDisplayName] = createSignal("");
   const [adding, setAdding] = createSignal(false);
+  const [showManualKey, setShowManualKey] = createSignal(false);
 
   const hexToBytes = (hex: string): number[] | null => {
     const clean = hex.replace(/\s/g, "");
@@ -23,22 +24,53 @@ const Contacts: Component = () => {
   };
 
   const handleAdd = async () => {
-    const pk = hexToBytes(publicKey());
-    if (!pk) {
-      store.setError("Public key must be 32 bytes in hex (64 characters)");
+    const addr = address().trim();
+    if (!addr) return;
+
+    setAdding(true);
+
+    if (showManualKey()) {
+      // Manual flow: user provided public key
+      const pk = hexToBytes(publicKey());
+      if (!pk) {
+        store.setError("Public key must be 32 bytes in hex (64 characters)");
+        setAdding(false);
+        return;
+      }
+      try {
+        await api.addContact(addr, pk, displayName());
+        setAddress("");
+        setPublicKey("");
+        setDisplayName("");
+        setShowManualKey(false);
+
+        const contacts = await api.listContacts();
+        store.setContacts(contacts);
+      } catch (e) {
+        store.setError(String(e));
+      } finally {
+        setAdding(false);
+      }
       return;
     }
-    setAdding(true);
+
+    // Auto-resolve flow: fetch their prekey bundle to get public key
     try {
-      await api.addContact(address(), pk, displayName());
+      const bundleData = await api.fetchBundle(addr, 8);
+      // First 32 bytes of the bundle = identity key (Ed25519 public key)
+      const pk = bundleData.slice(0, 32);
+      await api.addContact(addr, pk, displayName());
+
       setAddress("");
-      setPublicKey("");
       setDisplayName("");
 
       const contacts = await api.listContacts();
       store.setContacts(contacts);
-    } catch (e) {
-      store.setError(String(e));
+    } catch {
+      store.setError(
+        "Could not resolve this address. The user may be offline or hasn't uploaded their keys yet. You can enter their public key manually.",
+      );
+      setShowManualKey(true);
     } finally {
       setAdding(false);
     }
@@ -74,19 +106,29 @@ const Contacts: Component = () => {
               <input
                 type="text"
                 value={address()}
-                onInput={(e) => setAddress(e.currentTarget.value)}
+                onInput={(e) => {
+                  setAddress(e.currentTarget.value);
+                  setShowManualKey(false);
+                }}
                 placeholder="contact address"
               />
             </label>
-            <label class="field">
-              <span class="field-label">Public Key (hex)</span>
-              <input
-                type="text"
-                value={publicKey()}
-                onInput={(e) => setPublicKey(e.currentTarget.value)}
-                placeholder="64-character hex string"
-              />
-            </label>
+
+            <Show when={showManualKey()}>
+              <label class="field">
+                <span class="field-label">Public Key (hex)</span>
+                <input
+                  type="text"
+                  value={publicKey()}
+                  onInput={(e) => setPublicKey(e.currentTarget.value)}
+                  placeholder="64-character hex string"
+                />
+                <span class="field-hint">
+                  Could not auto-resolve. Paste the 32-byte Ed25519 public key.
+                </span>
+              </label>
+            </Show>
+
             <label class="field">
               <span class="field-label">Display name</span>
               <input
@@ -99,9 +141,9 @@ const Contacts: Component = () => {
             <button
               class="btn btn-primary"
               onClick={handleAdd}
-              disabled={adding() || !address()}
+              disabled={adding() || !address().trim()}
             >
-              {adding() ? "Adding…" : "Add Contact"}
+              {adding() ? "Resolving…" : "Add Contact"}
             </button>
           </div>
         </div>

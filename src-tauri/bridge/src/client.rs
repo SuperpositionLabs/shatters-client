@@ -1,4 +1,5 @@
 use std::ffi::{CStr, CString};
+use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
 use std::sync::Mutex;
 
@@ -6,6 +7,35 @@ use serde::Serialize;
 
 use crate::error::{check_status, BridgeError, BridgeResult};
 use crate::ffi;
+
+// ---- on_message callback trampolining ----
+
+struct MsgCallbackCtx {
+    f: Box<dyn Fn(String, Vec<u8>, i64, bool) + Send + Sync>,
+}
+
+unsafe extern "C" fn msg_trampoline(
+    ctx: *mut c_void,
+    contact_address: *const c_char,
+    plaintext: *const u8,
+    plaintext_len: usize,
+    timestamp_ms: i64,
+    outgoing: c_int,
+) {
+    if ctx.is_null() || contact_address.is_null() {
+        return;
+    }
+    let ctx = &*(ctx as *const MsgCallbackCtx);
+    let contact = CStr::from_ptr(contact_address)
+        .to_string_lossy()
+        .into_owned();
+    let data = if plaintext.is_null() || plaintext_len == 0 {
+        Vec::new()
+    } else {
+        std::slice::from_raw_parts(plaintext, plaintext_len).to_vec()
+    };
+    (ctx.f)(contact, data, timestamp_ms, outgoing != 0);
+}
 
 /// Thread-safe wrapper around the opaque C `ShattersClient`.
 pub struct Client {
@@ -88,6 +118,20 @@ impl Client {
 
     pub fn connect(&self) -> BridgeResult<()> {
         check_status(unsafe { ffi::shatters_connect(self.ptr()) })
+    }
+
+    /// Register a callback for incoming messages.
+    /// The callback context is leaked and lives for the lifetime of the C client.
+    pub fn on_message(
+        &self,
+        callback: impl Fn(String, Vec<u8>, i64, bool) + Send + Sync + 'static,
+    ) {
+        let ctx = Box::into_raw(Box::new(MsgCallbackCtx {
+            f: Box::new(callback),
+        }));
+        unsafe {
+            ffi::shatters_on_message(self.ptr(), Some(msg_trampoline), ctx as *mut c_void);
+        }
     }
 
     pub fn disconnect(&self) {

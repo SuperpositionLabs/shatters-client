@@ -1,6 +1,6 @@
 use serde::Serialize;
 use shatters_bridge::{client::Contact, client::HistoryMessage, BridgeError, Client};
-use tauri::State;
+use tauri::{Emitter, State};
 
 use crate::AppState;
 
@@ -20,8 +20,17 @@ pub struct ConnectResult {
     pub address: String,
 }
 
+#[derive(Clone, Serialize)]
+struct IncomingMessage {
+    contact_address: String,
+    plaintext: Vec<u8>,
+    timestamp_ms: i64,
+    outgoing: bool,
+}
+
 #[tauri::command]
 pub fn connect(
+    app: tauri::AppHandle,
     state: State<AppState>,
     db_path: String,
     db_pass: String,
@@ -34,6 +43,21 @@ pub fn connect(
     client.connect().map_err(|e| e.to_string())?;
 
     let address = client.address().map_err(|e| e.to_string())?;
+
+    // Register incoming-message callback → emit Tauri event
+    let app_handle = app.clone();
+    client.on_message(move |contact, plaintext, timestamp_ms, outgoing| {
+        let _ = app_handle.emit(
+            "shatters://message",
+            IncomingMessage {
+                contact_address: contact,
+                plaintext,
+                timestamp_ms,
+                outgoing,
+            },
+        );
+    });
+
     *state.client.lock().map_err(|e| e.to_string())? = Some(client);
 
     Ok(ConnectResult { address })
@@ -41,8 +65,8 @@ pub fn connect(
 
 #[tauri::command]
 pub fn disconnect(state: State<AppState>) -> CmdResult<()> {
-    let guard = state.client.lock().map_err(|e| e.to_string())?;
-    if let Some(c) = guard.as_ref() {
+    let mut guard = state.client.lock().map_err(|e| e.to_string())?;
+    if let Some(c) = guard.take() {
         c.disconnect();
     }
     Ok(())

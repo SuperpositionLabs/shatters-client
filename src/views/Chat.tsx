@@ -1,4 +1,4 @@
-import { Component, For, Show, createSignal, createEffect } from "solid-js";
+import { Component, For, Show, createSignal, createEffect, onMount, onCleanup } from "solid-js";
 import { store } from "../store";
 import { api, type HistoryMessage } from "../api";
 import Sidebar from "../components/Sidebar";
@@ -6,17 +6,20 @@ import "./chat.css";
 
 const Chat: Component = () => {
   const [input, setInput] = createSignal("");
+  const [sending, setSending] = createSignal(false);
   let messagesEnd: HTMLDivElement | undefined;
 
   const scrollToBottom = () => {
     messagesEnd?.scrollIntoView({ behavior: "smooth" });
   };
 
+  // Scroll when messages change
   createEffect(() => {
     store.messages();
     scrollToBottom();
   });
 
+  // Load messages when active contact changes
   createEffect(async () => {
     const contact = store.activeContact();
     if (!contact) {
@@ -31,21 +34,81 @@ const Chat: Component = () => {
     }
   });
 
+  // Poll for new messages every 3 seconds + listen for real-time events
+  createEffect(() => {
+    const contact = store.activeContact();
+    if (!contact) return;
+
+    const timer = setInterval(async () => {
+      try {
+        const msgs = await api.messageHistory(contact, 100);
+        store.setMessages(msgs);
+      } catch {
+        /* ignore polling errors */
+      }
+    }, 3000);
+
+    onCleanup(() => clearInterval(timer));
+  });
+
+  // Listen for real-time incoming message events from the backend
+  onMount(async () => {
+    const { listen } = await import("@tauri-apps/api/event");
+
+    const unlisten = await listen("shatters://message", async () => {
+      // Refresh the active chat
+      const contact = store.activeContact();
+      if (contact) {
+        try {
+          const msgs = await api.messageHistory(contact, 100);
+          store.setMessages(msgs);
+        } catch {
+          /* ignore */
+        }
+      }
+      // Refresh contacts (new contacts may have been auto-added)
+      try {
+        const contacts = await api.listContacts();
+        store.setContacts(contacts);
+      } catch {
+        /* ignore */
+      }
+    });
+
+    onCleanup(() => unlisten());
+  });
+
   const handleSend = async () => {
     const contact = store.activeContact();
     const text = input().trim();
-    if (!contact || !text) return;
+    if (!contact || !text || sending()) return;
+
+    setSending(true);
+    const encoded = new TextEncoder().encode(text);
 
     try {
-      const encoded = new TextEncoder().encode(text);
       await api.sendMessage(contact, encoded);
-      setInput("");
+    } catch {
+      // No established session — try to initiate via X3DH key exchange
+      try {
+        const bundleData = await api.fetchBundle(contact, 10);
+        await api.startConversation(contact, bundleData, encoded);
+      } catch (e) {
+        store.setError("Could not send message: " + String(e));
+        setSending(false);
+        return;
+      }
+    }
 
-      // Refresh
+    setInput("");
+    setSending(false);
+
+    // Refresh message history
+    try {
       const msgs = await api.messageHistory(contact, 100);
       store.setMessages(msgs);
-    } catch (e) {
-      store.setError(String(e));
+    } catch {
+      /* ignore */
     }
   };
 
@@ -140,9 +203,9 @@ const Chat: Component = () => {
               type="button"
               class="btn btn-primary chat-send-btn"
               onClick={handleSend}
-              disabled={!input().trim()}
+              disabled={!input().trim() || sending()}
             >
-              Send
+              {sending() ? "…" : "Send"}
             </button>
           </div>
         </Show>

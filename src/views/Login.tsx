@@ -1,4 +1,4 @@
-import { Component, Show, createSignal, onMount, onCleanup } from "solid-js";
+import { Component, createSignal, onMount, onCleanup, createEffect } from "solid-js";
 import { store } from "../store";
 import { api } from "../api";
 import "./login.css";
@@ -84,6 +84,13 @@ const Login: Component = () => {
 
       await api.resumeConversations();
 
+      // Upload prekey bundle so other users can initiate conversations with us
+      try {
+        await api.uploadPrekeyBundle(20);
+      } catch {
+        /* non-critical — user can do this later from Settings */
+      }
+
       store.setView("chat");
     } catch (e) {
       store.setError(String(e));
@@ -92,10 +99,14 @@ const Login: Component = () => {
     }
   };
 
-  const closeSettings = () => {
+  /* auto-persist whenever a settings field changes */
+  createEffect(() => {
+    host();
+    port();
+    dbDirectory();
+    username();
     persistPrefs();
-    setSettingsOpen(false);
-  };
+  });
 
   return (
     <div class="login">
@@ -115,12 +126,11 @@ const Login: Component = () => {
 
         <div class="login-form">
           <label class="field">
-            <span class="field-label">username</span>
+            <span class="field-label">Username</span>
             <input
               type="text"
               value={username()}
               onInput={(e) => setUsername(e.currentTarget.value)}
-              placeholder="your name"
             />
             <span class="field-hint">
               Used as the database file name ({dbFileName()}).
@@ -128,20 +138,17 @@ const Login: Component = () => {
           </label>
 
           <label class="field">
-            <span class="field-label">password</span>
+            <span class="field-label">Password</span>
             <input
               type="password"
               value={dbPass()}
               onInput={(e) => setDbPass(e.currentTarget.value)}
-              placeholder="encryption passphrase"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleConnect();
+              }}
             />
             <span class="field-hint">Local database encryption passphrase.</span>
           </label>
-
-          <div class="login-status" role="status">
-            <span class="login-status-dot" />
-            <span>{loading() ? "Connecting…" : "Not connected"}</span>
-          </div>
 
           <div class="login-actions">
             <button
@@ -150,14 +157,15 @@ const Login: Component = () => {
               onClick={handleConnect}
               disabled={loading()}
             >
-              {loading() ? "CONNECTING…" : "CONNECT"}
+              {loading() ? "CONNECTING" : "CONNECT"}
             </button>
             <button
               type="button"
-              class="login-settings-btn"
-              onClick={() => setSettingsOpen(true)}
-              title="Folder for database, server and port"
+              class={`login-settings-btn ${settingsOpen() ? "active" : ""}`}
+              onClick={() => setSettingsOpen(!settingsOpen())}
+              title="Client connection settings"
               aria-label="Settings"
+              aria-expanded={settingsOpen()}
             >
               <svg
                 viewBox="0 0 24 24"
@@ -174,63 +182,17 @@ const Login: Component = () => {
               </svg>
             </button>
           </div>
-        </div>
 
-        <p class="login-footer">
-          don't have a server?{" "}
-          <a
-            class="login-footer-link"
-            href="https://github.com"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            check out the github repo!
-          </a>
-        </p>
-      </div>
-
-      <Show when={settingsOpen()}>
-        <div
-          class="login-settings-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="login-settings-title"
-        >
-          <div class="login-settings-panel">
-            <div class="login-settings-header">
-              <h2 id="login-settings-title" class="login-settings-title">
-                Connection settings
-              </h2>
-              <button
-                type="button"
-                class="login-settings-close"
-                onClick={closeSettings}
-                aria-label="Close"
-              >
-                ×
-              </button>
-            </div>
-
-            <div class="login-settings-body">
-              <label class="field">
-                <span class="field-label">database folder</span>
-                <input
-                  type="text"
-                  value={dbDirectory()}
-                  onInput={(e) => setDbDirectory(e.currentTarget.value)}
-                  placeholder={DEFAULT_DB_DIR}
-                />
-                <span class="field-hint">
-                  Full path to the folder where{" "}
-                  <span class="field-hint-mono">{dbFileName()}</span> will be
-                  stored. Default is the current directory (
-                  <span class="field-hint-mono">{DEFAULT_DB_DIR}</span>).
-                </span>
-              </label>
+          {/* Inline collapsible settings */}
+          <div class={`login-settings-inline ${settingsOpen() ? "open" : ""}`}>
+            <div class="login-settings-inner">
+              <div class="login-settings-label">
+                <span class="login-settings-label-text">Connection</span>
+              </div>
 
               <div class="login-row">
                 <label class="field login-field-server">
-                  <span class="field-label">host</span>
+                  <span class="field-label">Host</span>
                   <input
                     type="text"
                     value={host()}
@@ -239,7 +201,7 @@ const Login: Component = () => {
                   />
                 </label>
                 <label class="field login-field-port">
-                  <span class="field-label">port</span>
+                  <span class="field-label">Port</span>
                   <input
                     type="number"
                     value={port()}
@@ -250,24 +212,40 @@ const Login: Component = () => {
                 </label>
               </div>
 
-              <p class="login-settings-preview">
-                Database file:{" "}
-                <span class="login-settings-preview-path">{resolvedDbPath()}</span>
-              </p>
-            </div>
+              <div class="login-settings-label">
+                <span class="login-settings-label-text">Storage</span>
+              </div>
 
-            <div class="login-settings-footer">
-              <button
-                type="button"
-                class="btn btn-primary login-settings-save"
-                onClick={closeSettings}
-              >
-                Done
-              </button>
+              <label class="field">
+                <span class="field-label">Database folder</span>
+                <input
+                  type="text"
+                  value={dbDirectory()}
+                  onInput={(e) => setDbDirectory(e.currentTarget.value)}
+                  placeholder={DEFAULT_DB_DIR}
+                />
+              </label>
+
+              <div class="login-settings-preview">
+                <span class="login-settings-preview-label">Resolved path</span>
+                <span class="login-settings-preview-path">{resolvedDbPath()}</span>
+              </div>
             </div>
           </div>
         </div>
-      </Show>
+
+        <p class="login-footer">
+          Don't have a server?{" "}
+          <a
+            class="login-footer-link"
+            href="https://github.com"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Check out the Github Repo!
+          </a>
+        </p>
+      </div>
     </div>
   );
 };

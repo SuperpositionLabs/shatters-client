@@ -72,8 +72,11 @@ const Settings: Component = () => {
           <section class="settings-section">
             <h3>About</h3>
             <p class="settings-desc">
-              Shatters v0.1.0 — end-to-end encrypted messaging with X3DH key
-              agreement and Double Ratchet forward secrecy.
+              <strong>Shatters</strong> v0.1.0
+            </p>
+            <p class="settings-desc">
+              End-to-end encrypted messaging with X3DH key agreement and
+              Double Ratchet forward secrecy.
             </p>
           </section>
         </div>

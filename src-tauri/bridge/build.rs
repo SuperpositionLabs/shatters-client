@@ -124,6 +124,10 @@ fn main() {
     println!("cargo:rustc-link-search=native={}", sdk_lib.display());
     println!("cargo:rustc-link-lib=static=shatters-sdk");
 
+    // Re-link when the SDK static library changes
+    let sdk_lib_file = sdk_lib.join(sdk_static_lib_filename());
+    println!("cargo:rerun-if-changed={}", sdk_lib_file.display());
+
     let vcpkg_lib = vcpkg_installed_lib_dir(Path::new(&sdk_lib));
     println!("cargo:rustc-link-search=native={}", vcpkg_lib.display());
 
