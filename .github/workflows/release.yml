@@ -155,6 +155,10 @@ jobs:
         with:
           vcpkgDirectory: ${{ github.workspace }}/vcpkg
           vcpkgJsonGlob: shatters-sdk/vcpkg.json
+          # The SDK's vcpkg.json has no builtin-baseline and the SDK repo does
+          # not vendor vcpkg as a submodule on CI, so pin a known-good commit
+          # here. Bump in lockstep with the local shatters-sdk/vcpkg pin.
+          vcpkgGitCommitId: efa4634bd526b87559684607d2cbbdeeec0f07d8
 
       - name: Configure shatters-sdk
         working-directory: shatters-sdk
