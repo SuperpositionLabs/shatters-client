@@ -216,7 +216,9 @@ jobs:
         run: |
           set -euo pipefail
           if [ "${{ runner.os }}" = "Linux" ]; then
-            BUNDLES="deb,rpm,appimage"
+            # AppImage requires a 512x512+ square icon. Re-enable "appimage"
+            # here once src-tauri/icons/icon.png is upgraded to 1024x1024.
+            BUNDLES="deb,rpm"
           else
             BUNDLES="msi,nsis"
           fi
