@@ -45,18 +45,21 @@ jobs:
     steps:
       # The Tauri client expects the SDK at ../shatters-sdk relative to the
       # client repo root (src-tauri/bridge/build.rs resolves
-      # ../../../shatters-sdk/build/<preset>). We lay out the workspace as:
-      #   <runner>/shatters-client   <-- this repo
-      #   <runner>/shatters-sdk      <-- sibling clone of the SDK repo
+      # ../../../shatters-sdk/build/<preset> from src-tauri/bridge/).
+      #
+      # Layout on the runner:
+      #   $GITHUB_WORKSPACE              <-- shatters-client (this repo)
+      #   $GITHUB_WORKSPACE/../shatters-sdk
+      #   $GITHUB_WORKSPACE/../vcpkg
+      #
+      # We deliberately do NOT use `path: shatters-client` for the client
+      # checkout. Nesting the project under a sub-directory breaks
+      # tauri-action's artifact-discovery glob (it looks for
+      # src-tauri/target/<target>/release/bundle/... relative to the runner
+      # cwd, which differs from the projectPath used during the build).
       - name: Checkout shatters-client
         uses: actions/checkout@v4
         with:
-          path: shatters-client
-          # Pin the exact ref being built. For tag pushes this is
-          # refs/tags/<tag>; for workflow_dispatch it's the selected branch.
-          # Avoids actions/checkout deriving an ambiguous refspec from the
-          # tag name (e.g. fetching +refs/heads/v1.0.0*) which can leave the
-          # working tree without a valid .git directory.
           ref: ${{ github.ref }}
           fetch-depth: 1
 
@@ -67,9 +70,10 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "value=${{ inputs.sdk_ref }}" >> "$GITHUB_OUTPUT"
           else
-            # For tag pushes, default to the matching tag in the SDK repo if it
-            # exists, otherwise fall back to main. This lets you cut coordinated
-            # releases by tagging both repos with the same version.
+            # For tag pushes, default to the matching tag in the SDK repo if
+            # it exists, otherwise fall back to main. This lets you cut
+            # coordinated releases by tagging both repos with the same
+            # version.
             echo "value=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
           fi
 
@@ -78,7 +82,7 @@ jobs:
         with:
           repository: superpositionlabs/shatters-sdk
           ref: ${{ steps.sdkref.outputs.value }}
-          path: shatters-sdk
+          path: ${{ github.workspace }}/../shatters-sdk
           submodules: recursive
           fetch-depth: 1
         continue-on-error: true
@@ -90,7 +94,7 @@ jobs:
         with:
           repository: superpositionlabs/shatters-sdk
           ref: main
-          path: shatters-sdk
+          path: ${{ github.workspace }}/../shatters-sdk
           submodules: recursive
           fetch-depth: 1
 
@@ -128,15 +132,15 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: ${{ matrix.platform.name }}-cargo-${{ hashFiles('shatters-client/src-tauri/Cargo.lock', 'shatters-client/src-tauri/bridge/Cargo.toml') }}
+          key: ${{ matrix.platform.name }}-cargo-${{ hashFiles('src-tauri/Cargo.lock', 'src-tauri/bridge/Cargo.toml') }}
           restore-keys: |
             ${{ matrix.platform.name }}-cargo-
 
       - name: Cache cargo target
         uses: actions/cache@v4
         with:
-          path: shatters-client/src-tauri/target
-          key: ${{ matrix.platform.name }}-target-${{ hashFiles('shatters-client/src-tauri/Cargo.lock') }}
+          path: src-tauri/target
+          key: ${{ matrix.platform.name }}-target-${{ hashFiles('src-tauri/Cargo.lock') }}
           restore-keys: |
             ${{ matrix.platform.name }}-target-
 
@@ -145,7 +149,7 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: shatters-client/package-lock.json
+          cache-dependency-path: package-lock.json
 
       # ----- vcpkg + native SDK ----------------------------------------------
 
@@ -159,33 +163,32 @@ jobs:
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
         with:
-          vcpkgDirectory: ${{ github.workspace }}/vcpkg
-          vcpkgJsonGlob: shatters-sdk/vcpkg.json
-          # The SDK's vcpkg.json has no builtin-baseline and the SDK repo does
-          # not vendor vcpkg as a submodule on CI, so pin a known-good commit
-          # here. Bump in lockstep with the local shatters-sdk/vcpkg pin.
+          vcpkgDirectory: ${{ github.workspace }}/../vcpkg
+          vcpkgJsonGlob: ${{ github.workspace }}/../shatters-sdk/vcpkg.json
+          # The SDK's vcpkg.json has no builtin-baseline and the SDK repo
+          # does not vendor vcpkg as a submodule on CI, so pin a known-good
+          # commit here. Bump in lockstep with the local shatters-sdk/vcpkg
+          # pin.
           vcpkgGitCommitId: efa4634bd526b87559684607d2cbbdeeec0f07d8
 
       - name: Configure shatters-sdk
-        working-directory: shatters-sdk
+        working-directory: ${{ github.workspace }}/../shatters-sdk
         env:
-          VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+          VCPKG_ROOT: ${{ github.workspace }}/../vcpkg
         run: cmake --preset ${{ matrix.platform.sdk_preset }}
 
       - name: Build shatters-sdk
-        working-directory: shatters-sdk
+        working-directory: ${{ github.workspace }}/../shatters-sdk
         env:
-          VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+          VCPKG_ROOT: ${{ github.workspace }}/../vcpkg
         run: cmake --build build/${{ matrix.platform.sdk_build_dir }} --target shatters-sdk --config Release -j
 
       # ----- Frontend + Tauri bundle -----------------------------------------
 
       - name: Install npm dependencies
-        working-directory: shatters-client
         run: npm ci
 
       - name: Generate Tauri app icons
-        working-directory: shatters-client
         run: npx --yes @tauri-apps/cli icon src-tauri/icons/icon.png
 
       - name: Resolve release tag
@@ -203,7 +206,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          projectPath: shatters-client
           tagName: ${{ steps.tag.outputs.value }}
           releaseName: "Shatters ${{ steps.tag.outputs.value }}"
           releaseDraft: true
