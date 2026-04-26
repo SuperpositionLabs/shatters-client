@@ -208,7 +208,22 @@ jobs:
           # tauri-cli build invokes cargo, which invokes the bridge build.rs.
           # Make sure it can find the SDK static lib.
           SHATTERS_SDK_DIR: ${{ github.workspace }}/../shatters-sdk
-        run: npx --yes @tauri-apps/cli build --target ${{ matrix.platform.rust_target }}
+        # Use the locally-installed @tauri-apps/cli (from npm ci) via the
+        # `tauri` script in package.json. `npx --yes` would happily download
+        # an unrelated version if it couldn't find the local one, masking
+        # bundling failures. Force --bundles so the step fails loudly if the
+        # bundle phase is skipped for any reason.
+        run: |
+          set -euo pipefail
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            BUNDLES="deb,rpm,appimage"
+          else
+            BUNDLES="msi,nsis"
+          fi
+          npm run tauri -- build \
+            --target ${{ matrix.platform.rust_target }} \
+            --bundles "$BUNDLES" \
+            --verbose
 
       - name: Collect release artifacts
         id: collect
