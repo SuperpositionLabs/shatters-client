@@ -213,6 +213,7 @@ jobs:
         # an unrelated version if it couldn't find the local one, masking
         # bundling failures. Force --bundles so the step fails loudly if the
         # bundle phase is skipped for any reason.
+        shell: bash
         run: |
           set -euo pipefail
           if [ "${{ runner.os }}" = "Linux" ]; then
