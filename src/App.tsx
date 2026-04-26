@@ -11,8 +11,9 @@ import "./styles/app.css";
 
 const LOGIN_SIZE = { w: 460, h: 600 };
 const APP_SIZE = { w: 960, h: 680 };
+const RESIZE_DURATION_MS = 420;
 
-async function resizeWindow(w: number, h: number, recenter = false) {
+async function setWindowSize(w: number, h: number, recenter = false) {
   try {
     const win = getCurrentWindow();
     await win.setSize(new LogicalSize(w, h));
@@ -28,6 +29,65 @@ async function resizeWindow(w: number, h: number, recenter = false) {
   }
 }
 
+// Cubic ease-in-out
+const easeInOut = (t: number): number =>
+  t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+
+let activeAnim = 0;
+
+async function animateResize(
+  fromW: number,
+  fromH: number,
+  toW: number,
+  toH: number,
+  durationMs = RESIZE_DURATION_MS,
+) {
+  const win = (() => {
+    try {
+      return getCurrentWindow();
+    } catch {
+      return null;
+    }
+  })();
+  if (!win) return;
+
+  const myAnim = ++activeAnim;
+  const start = performance.now();
+
+  return new Promise<void>((resolve) => {
+    const step = async () => {
+      if (myAnim !== activeAnim) {
+        resolve();
+        return;
+      }
+      const t = Math.min(1, (performance.now() - start) / durationMs);
+      const k = easeInOut(t);
+      const w = Math.round(fromW + (toW - fromW) * k);
+      const h = Math.round(fromH + (toH - fromH) * k);
+      try {
+        await win.setSize(new LogicalSize(w, h));
+        try {
+          await win.center();
+        } catch {
+          /* ignore */
+        }
+      } catch {
+        /* ignore */
+      }
+      if (t >= 1) {
+        resolve();
+        return;
+      }
+      requestAnimationFrame(() => {
+        step();
+      });
+    };
+    requestAnimationFrame(() => {
+      step();
+    });
+  });
+}
+
 const App: Component = () => {
   let prevView: string | null = null;
 
@@ -36,11 +96,17 @@ const App: Component = () => {
     if (prevView === v) return;
     const wasLogin = prevView === "login" || prevView === null;
     prevView = v;
-    if (v === "login") {
-      resizeWindow(LOGIN_SIZE.w, LOGIN_SIZE.h, true);
+    if (v === "login" && !wasLogin) {
+      // App → login: shrink with animation
+      animateResize(APP_SIZE.w, APP_SIZE.h, LOGIN_SIZE.w, LOGIN_SIZE.h);
+    } else if (v === "login") {
+      // First mount on login: snap (no animation needed)
+      setWindowSize(LOGIN_SIZE.w, LOGIN_SIZE.h, true);
     } else if (wasLogin) {
-      resizeWindow(APP_SIZE.w, APP_SIZE.h, true);
+      // Login → app: gradual grow
+      animateResize(LOGIN_SIZE.w, LOGIN_SIZE.h, APP_SIZE.w, APP_SIZE.h);
     }
+    // app ↔ app navigation: do nothing (no resize, no fade)
   });
 
   // Track focus so message notifications only fire when window is hidden / blurred.
@@ -64,16 +130,16 @@ const App: Component = () => {
       <div class="app-content">
         <Switch>
           <Match when={store.view() === "login"}>
-            <div class="view-fade"><Login /></div>
+            <Login />
           </Match>
           <Match when={store.view() === "chat"}>
-            <div class="view-fade"><Chat /></div>
+            <Chat />
           </Match>
           <Match when={store.view() === "contacts"}>
-            <div class="view-fade"><Contacts /></div>
+            <Contacts />
           </Match>
           <Match when={store.view() === "settings"}>
-            <div class="view-fade"><Settings /></div>
+            <Settings />
           </Match>
         </Switch>
       </div>

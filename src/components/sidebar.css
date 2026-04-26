@@ -209,18 +209,38 @@
 
 .sidebar-contact-badge {
   flex-shrink: 0;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  border-radius: 9px;
-  background: var(--accent);
-  color: var(--on-accent);
-  font-size: 0.65rem;
-  font-weight: 700;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: #ff8a1f;
+  color: #1a1208;
+  font-size: 0.7rem;
+  font-weight: 800;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  margin-left: 4px;
+  margin-left: 6px;
+  box-shadow: 0 0 0 2px var(--bg-primary), 0 1px 4px rgba(255, 138, 31, 0.5);
+  animation: badge-pop 220ms ease;
+}
+
+.sidebar-contact.active .sidebar-contact-badge {
+  box-shadow: 0 0 0 2px var(--bg-tertiary), 0 1px 4px rgba(255, 138, 31, 0.5);
+}
+
+@keyframes badge-pop {
+  0% {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.15);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
 .sidebar-footer {
