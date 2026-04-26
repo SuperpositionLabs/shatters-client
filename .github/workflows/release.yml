@@ -77,26 +77,28 @@ jobs:
             echo "value=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Checkout shatters-sdk (matching tag, fallback to main)
-        uses: actions/checkout@v4
-        with:
-          repository: superpositionlabs/shatters-sdk
-          ref: ${{ steps.sdkref.outputs.value }}
-          path: ${{ github.workspace }}/../shatters-sdk
-          submodules: recursive
-          fetch-depth: 1
-        continue-on-error: true
-        id: sdk_tag_checkout
-
-      - name: Checkout shatters-sdk@main (fallback)
-        if: steps.sdk_tag_checkout.outcome != 'success'
-        uses: actions/checkout@v4
-        with:
-          repository: superpositionlabs/shatters-sdk
-          ref: main
-          path: ${{ github.workspace }}/../shatters-sdk
-          submodules: recursive
-          fetch-depth: 1
+      - name: Clone shatters-sdk (matching tag, fallback to main)
+        shell: bash
+        env:
+          SDK_REF: ${{ steps.sdkref.outputs.value }}
+        run: |
+          set -euo pipefail
+          SDK_DIR="${{ github.workspace }}/../shatters-sdk"
+          rm -rf "$SDK_DIR"
+          # Initial bare init so we can selectively fetch the desired ref
+          # without paying for the full clone, and so we can fall back to
+          # main if the matching tag doesn't exist in the SDK repo.
+          git init -q "$SDK_DIR"
+          cd "$SDK_DIR"
+          git remote add origin https://github.com/superpositionlabs/shatters-sdk.git
+          if git fetch --depth 1 origin "$SDK_REF"; then
+            echo "Using shatters-sdk@$SDK_REF"
+          else
+            echo "shatters-sdk ref '$SDK_REF' not found, falling back to main"
+            git fetch --depth 1 origin main
+          fi
+          git checkout -q FETCH_HEAD
+          git submodule update --init --recursive --depth 1
 
       # ----- Toolchains -------------------------------------------------------
 
