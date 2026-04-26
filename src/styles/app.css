@@ -13,23 +13,3 @@
   flex-direction: column;
   overflow: hidden;
 }
-
-/* View transition: re-keyed wrapper re-runs the fade-in animation */
-.view-fade {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  animation: view-fade-in 180ms ease;
-}
-
-@keyframes view-fade-in {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}

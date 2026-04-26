@@ -10,21 +10,60 @@ interface MessageRow {
   dateSeparator: string | null;
 }
 
+// Merge fetched list with previous, preserving reference identity for
+// unchanged messages so SolidJS <For> only patches new/changed rows
+// instead of rebuilding the whole list on every refresh.
+const mergeMessages = (
+  prev: HistoryMessage[],
+  next: HistoryMessage[],
+): HistoryMessage[] => {
+  if (prev.length === 0) return next;
+  const byId = new Map<number, HistoryMessage>();
+  for (const m of prev) byId.set(m.id, m);
+  let changed = prev.length !== next.length;
+  const merged = next.map((m) => {
+    const existing = byId.get(m.id);
+    if (existing && existing.timestamp_ms === m.timestamp_ms) return existing;
+    changed = true;
+    return m;
+  });
+  return changed ? merged : prev;
+};
+
 const Chat: Component = () => {
   const [input, setInput] = createSignal("");
   const [sending, setSending] = createSignal(false);
   const [renamingHeader, setRenamingHeader] = createSignal(false);
   const [headerRenameValue, setHeaderRenameValue] = createSignal("");
   let messagesEnd: HTMLDivElement | undefined;
+  let messagesContainer: HTMLDivElement | undefined;
+
+  const isNearBottom = () => {
+    const el = messagesContainer;
+    if (!el) return true;
+    // Within 80px of the bottom counts as "following".
+    return el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  };
 
   const scrollToBottom = (smooth = true) => {
     messagesEnd?.scrollIntoView({ behavior: smooth ? "smooth" : "auto" });
   };
 
-  // Scroll when messages change
+  // Auto-scroll only when the user is already at/near the bottom, and only
+  // when the *last* message id changes (so a re-render with the same tail
+  // doesn't yank the viewport).
+  let lastSeenTailId: number | null = null;
   createEffect(() => {
-    store.messages();
-    scrollToBottom();
+    const list = store.messages();
+    const tail = list.length ? list[list.length - 1].id : null;
+    if (tail === lastSeenTailId) return;
+    const initial = lastSeenTailId === null;
+    const wasFollowing = initial || isNearBottom();
+    lastSeenTailId = tail;
+    if (wasFollowing) {
+      // initial load = jump, subsequent = smooth
+      queueMicrotask(() => scrollToBottom(!initial));
+    }
   });
 
   // Load messages when active contact changes; also clear unread for it.
@@ -32,9 +71,11 @@ const Chat: Component = () => {
     const contact = store.activeContact();
     if (!contact) {
       store.setMessages([]);
+      lastSeenTailId = null;
       return;
     }
     store.clearUnread(contact);
+    lastSeenTailId = null;
     try {
       const msgs = await api.messageHistory(contact, 200);
       store.setMessages(msgs);
@@ -50,7 +91,7 @@ const Chat: Component = () => {
     const timer = setInterval(async () => {
       try {
         const msgs = await api.messageHistory(contact, 200);
-        store.setMessages(msgs);
+        store.setMessages((prev) => mergeMessages(prev, msgs));
       } catch {
         /* ignore */
       }
@@ -127,11 +168,14 @@ const Chat: Component = () => {
           /* ignore */
         }
 
-        // Refresh active chat history
-        if (active) {
+        // Refresh active chat history only when the event is for the
+        // active contact (or the relay didn't tell us who it's from).
+        // Avoids rebuilding the message list when chatting with A and a
+        // message arrives from B.
+        if (active && (!fromAddr || fromAddr === active)) {
           try {
             const msgs = await api.messageHistory(active, 200);
-            store.setMessages(msgs);
+            store.setMessages((prev) => mergeMessages(prev, msgs));
           } catch {
             /* ignore */
           }
@@ -194,7 +238,7 @@ const Chat: Component = () => {
 
     try {
       const msgs = await api.messageHistory(contact, 200);
-      store.setMessages(msgs);
+      store.setMessages((prev) => mergeMessages(prev, msgs));
     } catch {
       /* ignore */
     }
@@ -247,10 +291,17 @@ const Chat: Component = () => {
 
   const myDisplayName = () => store.username() || "You";
 
+  // Indexed lookup keeps senderName O(1) even with many contacts.
+  const contactsByAddress = createMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of store.contacts()) map.set(c.address, c.display_name);
+    return map;
+  });
+
   const senderName = (m: HistoryMessage): string => {
     if (m.outgoing) return myDisplayName();
-    const c = store.contacts().find((x) => x.address === m.contact_address);
-    return c?.display_name || m.contact_address.slice(0, 12) + "…";
+    const name = contactsByAddress().get(m.contact_address);
+    return name || m.contact_address.slice(0, 12) + "…";
   };
 
   // Build rows: group consecutive messages from same sender within 5 min;
@@ -389,7 +440,7 @@ const Chat: Component = () => {
           </div>
 
           {/* Messages */}
-          <div class="chat-messages">
+          <div class="chat-messages" ref={messagesContainer}>
             <For each={rows()}>
               {(row) => (
                 <>
