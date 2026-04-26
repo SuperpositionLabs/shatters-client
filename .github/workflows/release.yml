@@ -203,13 +203,50 @@ jobs:
             echo "value=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Build & upload (tauri-action)
-        uses: tauri-apps/tauri-action@v0.5.22
+      - name: Build Tauri bundles
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tagName: ${{ steps.tag.outputs.value }}
-          releaseName: "Shatters ${{ steps.tag.outputs.value }}"
-          releaseDraft: true
-          prerelease: false
-          args: --target ${{ matrix.platform.rust_target }}
+          # tauri-cli build invokes cargo, which invokes the bridge build.rs.
+          # Make sure it can find the SDK static lib.
+          SHATTERS_SDK_DIR: ${{ github.workspace }}/../shatters-sdk
+        run: npx --yes @tauri-apps/cli build --target ${{ matrix.platform.rust_target }}
+
+      - name: Collect release artifacts
+        id: collect
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT="${{ github.workspace }}/release-artifacts"
+          mkdir -p "$OUT"
+          BUNDLE_DIR="src-tauri/target/${{ matrix.platform.rust_target }}/release/bundle"
+          # Match all bundle outputs across platforms; ignore .sig sidecars
+          # (we don't sign updates yet).
+          shopt -s nullglob globstar
+          for f in "$BUNDLE_DIR"/**/*.{deb,rpm,AppImage,msi,exe,dmg,app.tar.gz}; do
+            [ -f "$f" ] || continue
+            cp -v "$f" "$OUT/"
+          done
+          ls -la "$OUT"
+          # Fail loudly if nothing was produced.
+          if [ -z "$(ls -A "$OUT")" ]; then
+            echo "::error::No bundles produced under $BUNDLE_DIR"
+            find "$BUNDLE_DIR" -maxdepth 3 -type f || true
+            exit 1
+          fi
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.value }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Create the release once (idempotent across matrix jobs).
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --draft \
+              --title "Shatters $TAG" \
+              --notes "Automated release for $TAG"
+          fi
+          gh release upload "$TAG" \
+            "${{ github.workspace }}/release-artifacts/"* \
+            --clobber
