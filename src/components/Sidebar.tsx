@@ -1,15 +1,78 @@
-import { Component, For } from "solid-js";
+import { Component, For, createSignal, Show } from "solid-js";
 import { store } from "../store";
 import { api } from "../api";
 import "./sidebar.css";
 
 const Sidebar: Component = () => {
+  const [renaming, setRenaming] = createSignal<string | null>(null);
+  const [renameValue, setRenameValue] = createSignal("");
+
   const handleDisconnect = async () => {
     try {
       await api.disconnect();
     } catch (_) {}
     store.setConnected(false);
+    store.setAddress("");
+    store.setUsername("");
+    store.setContacts([]);
+    store.setActiveContact(null);
+    store.setMessages([]);
     store.setView("login");
+  };
+
+  const copyAddress = async () => {
+    try {
+      await navigator.clipboard.writeText(store.address());
+      store.pushToast("Address copied", "success", 1800);
+    } catch {
+      store.pushToast("Could not copy address", "error", 2500);
+    }
+  };
+
+  const startRename = (addr: string, current: string) => {
+    setRenaming(addr);
+    setRenameValue(current);
+  };
+
+  const cancelRename = () => {
+    setRenaming(null);
+    setRenameValue("");
+  };
+
+  const commitRename = async (addr: string) => {
+    const next = renameValue().trim();
+    const c = store.contacts().find((x) => x.address === addr);
+    if (!c) {
+      cancelRename();
+      return;
+    }
+    if (next === c.display_name) {
+      cancelRename();
+      return;
+    }
+    try {
+      await api.addContact(addr, c.public_key, next);
+      const list = await api.listContacts();
+      store.setContacts(list);
+      store.pushToast("Contact renamed", "success", 1800);
+    } catch (e) {
+      store.pushToast("Rename failed: " + String(e), "error");
+    } finally {
+      cancelRename();
+    }
+  };
+
+  const openContact = (addr: string) => {
+    store.setActiveContact(addr);
+    store.clearUnread(addr);
+    store.setView("chat");
+  };
+
+  const displayLabel = () => store.username() || "user";
+  const initials = () => {
+    const u = store.username().trim();
+    const src = u || store.address();
+    return src.slice(0, 2).toUpperCase();
   };
 
   return (
@@ -17,12 +80,32 @@ const Sidebar: Component = () => {
       {/* User info */}
       <div class="sidebar-header">
         <div class="sidebar-user">
-          <div class="sidebar-avatar">
-            {store.address().slice(0, 2).toUpperCase()}
-          </div>
+          <div class="sidebar-avatar">{initials()}</div>
           <div class="sidebar-user-info">
-            <div class="sidebar-user-label truncate">You</div>
-            <div class="sidebar-user-addr truncate">{store.address()}</div>
+            <div class="sidebar-user-label truncate" title={displayLabel()}>
+              {displayLabel()}
+            </div>
+            <button
+              type="button"
+              class="sidebar-user-addr-btn"
+              title="Click to copy address"
+              onClick={copyAddress}
+            >
+              <span class="sidebar-user-addr truncate">{store.address()}</span>
+              <svg
+                viewBox="0 0 24 24"
+                class="sidebar-user-addr-icon"
+                aria-hidden="true"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <rect x="9" y="9" width="13" height="13" rx="1" />
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+              </svg>
+            </button>
           </div>
         </div>
       </div>
@@ -56,26 +139,54 @@ const Sidebar: Component = () => {
       <div class="sidebar-list">
         <For each={store.contacts()}>
           {(contact) => (
-            <button
-              type="button"
+            <div
               class={`sidebar-contact ${store.activeContact() === contact.address ? "active" : ""}`}
-              onClick={() => {
-                store.setActiveContact(contact.address);
-                store.setView("chat");
-              }}
             >
-              <div class="sidebar-contact-avatar">
-                {(contact.display_name || contact.address).slice(0, 2).toUpperCase()}
-              </div>
-              <div class="sidebar-contact-info">
-                <div class="sidebar-contact-name truncate">
-                  {contact.display_name || contact.address}
+              <button
+                type="button"
+                class="sidebar-contact-main"
+                onClick={() => openContact(contact.address)}
+                onDblClick={() =>
+                  startRename(contact.address, contact.display_name || "")
+                }
+                title="Click to open · double-click to rename"
+              >
+                <div class="sidebar-contact-avatar">
+                  {(contact.display_name || contact.address).slice(0, 2).toUpperCase()}
                 </div>
-                <div class="sidebar-contact-addr truncate">
-                  {contact.address}
+                <div class="sidebar-contact-info">
+                  <Show
+                    when={renaming() === contact.address}
+                    fallback={
+                      <div class="sidebar-contact-name truncate">
+                        {contact.display_name || contact.address.slice(0, 16) + "…"}
+                      </div>
+                    }
+                  >
+                    <input
+                      class="sidebar-contact-rename"
+                      autofocus
+                      value={renameValue()}
+                      onClick={(e) => e.stopPropagation()}
+                      onInput={(e) => setRenameValue(e.currentTarget.value)}
+                      onKeyDown={(e) => {
+                        e.stopPropagation();
+                        if (e.key === "Enter") commitRename(contact.address);
+                        else if (e.key === "Escape") cancelRename();
+                      }}
+                      onBlur={() => commitRename(contact.address)}
+                      placeholder="display name"
+                    />
+                  </Show>
+                  <div class="sidebar-contact-addr truncate">{contact.address}</div>
                 </div>
-              </div>
-            </button>
+                <Show when={(store.unread()[contact.address] ?? 0) > 0}>
+                  <span class="sidebar-contact-badge">
+                    {store.unread()[contact.address]}
+                  </span>
+                </Show>
+              </button>
+            </div>
           )}
         </For>
       </div>

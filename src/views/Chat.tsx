@@ -1,16 +1,24 @@
-import { Component, For, Show, createSignal, createEffect, onMount, onCleanup } from "solid-js";
+import { Component, For, Show, createSignal, createEffect, onMount, onCleanup, createMemo } from "solid-js";
 import { store } from "../store";
 import { api, type HistoryMessage } from "../api";
 import Sidebar from "../components/Sidebar";
 import "./chat.css";
 
+interface MessageRow {
+  msg: HistoryMessage;
+  showHeader: boolean;
+  dateSeparator: string | null;
+}
+
 const Chat: Component = () => {
   const [input, setInput] = createSignal("");
   const [sending, setSending] = createSignal(false);
+  const [renamingHeader, setRenamingHeader] = createSignal(false);
+  const [headerRenameValue, setHeaderRenameValue] = createSignal("");
   let messagesEnd: HTMLDivElement | undefined;
 
-  const scrollToBottom = () => {
-    messagesEnd?.scrollIntoView({ behavior: "smooth" });
+  const scrollToBottom = (smooth = true) => {
+    messagesEnd?.scrollIntoView({ behavior: smooth ? "smooth" : "auto" });
   };
 
   // Scroll when messages change
@@ -19,61 +27,133 @@ const Chat: Component = () => {
     scrollToBottom();
   });
 
-  // Load messages when active contact changes
+  // Load messages when active contact changes; also clear unread for it.
   createEffect(async () => {
     const contact = store.activeContact();
     if (!contact) {
       store.setMessages([]);
       return;
     }
+    store.clearUnread(contact);
     try {
-      const msgs = await api.messageHistory(contact, 100);
+      const msgs = await api.messageHistory(contact, 200);
       store.setMessages(msgs);
     } catch (e) {
-      store.setError(String(e));
+      store.pushToast(String(e));
     }
   });
 
-  // Poll for new messages every 3 seconds + listen for real-time events
+  // Backstop poll (rare; the event listener already handles real-time updates).
   createEffect(() => {
     const contact = store.activeContact();
     if (!contact) return;
-
     const timer = setInterval(async () => {
       try {
-        const msgs = await api.messageHistory(contact, 100);
+        const msgs = await api.messageHistory(contact, 200);
         store.setMessages(msgs);
-      } catch {
-        /* ignore polling errors */
-      }
-    }, 3000);
-
-    onCleanup(() => clearInterval(timer));
-  });
-
-  // Listen for real-time incoming message events from the backend
-  onMount(async () => {
-    const { listen } = await import("@tauri-apps/api/event");
-
-    const unlisten = await listen("shatters://message", async () => {
-      // Refresh the active chat
-      const contact = store.activeContact();
-      if (contact) {
-        try {
-          const msgs = await api.messageHistory(contact, 100);
-          store.setMessages(msgs);
-        } catch {
-          /* ignore */
-        }
-      }
-      // Refresh contacts (new contacts may have been auto-added)
-      try {
-        const contacts = await api.listContacts();
-        store.setContacts(contacts);
       } catch {
         /* ignore */
       }
-    });
+    }, 30000);
+    onCleanup(() => clearInterval(timer));
+  });
+
+  // Notification helper (best effort).
+  const notify = (title: string, body: string) => {
+    try {
+      if (typeof Notification === "undefined") return;
+      if (Notification.permission === "granted") {
+        new Notification(title, { body });
+      } else if (Notification.permission !== "denied") {
+        Notification.requestPermission().then((p) => {
+          if (p === "granted") new Notification(title, { body });
+        });
+      }
+    } catch {
+      /* ignore */
+    }
+  };
+
+  // Subtle ping using Web Audio (no asset required).
+  const playPing = () => {
+    try {
+      const Ctx =
+        (window as any).AudioContext || (window as any).webkitAudioContext;
+      if (!Ctx) return;
+      const ctx = new Ctx();
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = "sine";
+      o.frequency.setValueAtTime(880, ctx.currentTime);
+      o.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.18);
+      g.gain.setValueAtTime(0.0001, ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.06, ctx.currentTime + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.22);
+      o.connect(g);
+      g.connect(ctx.destination);
+      o.start();
+      o.stop(ctx.currentTime + 0.25);
+      setTimeout(() => ctx.close().catch(() => {}), 400);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  // Listen for real-time incoming message events from the backend
+  onMount(async () => {
+    // Ask permission early so first incoming message can show a notification.
+    try {
+      if (typeof Notification !== "undefined" && Notification.permission === "default") {
+        Notification.requestPermission().catch(() => {});
+      }
+    } catch {
+      /* ignore */
+    }
+
+    const { listen } = await import("@tauri-apps/api/event");
+
+    const unlisten = await listen<{ from?: string }>(
+      "shatters://message",
+      async (e) => {
+        const fromAddr = (e.payload && e.payload.from) || null;
+        const active = store.activeContact();
+        const focused = (window as any).__shattersFocused?.() ?? true;
+
+        // Refresh contacts (auto-add may have happened)
+        try {
+          const contacts = await api.listContacts();
+          store.setContacts(contacts);
+        } catch {
+          /* ignore */
+        }
+
+        // Refresh active chat history
+        if (active) {
+          try {
+            const msgs = await api.messageHistory(active, 200);
+            store.setMessages(msgs);
+          } catch {
+            /* ignore */
+          }
+        }
+
+        // Decide if we should notify / mark unread.
+        const isForActive = fromAddr && fromAddr === active;
+        const shouldNotify = !isForActive || !focused;
+
+        if (shouldNotify) {
+          if (fromAddr) store.incrementUnread(fromAddr);
+          const c = fromAddr
+            ? store.contacts().find((x) => x.address === fromAddr)
+            : null;
+          const who =
+            c?.display_name ||
+            (fromAddr ? fromAddr.slice(0, 12) + "…" : "Someone");
+          notify(`New message from ${who}`, "Tap to open Shatters.");
+          playPing();
+        }
+      },
+    );
 
     onCleanup(() => unlisten());
   });
@@ -88,13 +168,22 @@ const Chat: Component = () => {
 
     try {
       await api.sendMessage(contact, encoded);
-    } catch {
-      // No established session — try to initiate via X3DH key exchange
+    } catch (sendErr) {
+      const errMsg = String(sendErr).toLowerCase();
+      const isNoSession =
+        errMsg.includes("no session") || errMsg.includes("ratchet not loaded");
+
+      if (!isNoSession) {
+        store.pushToast("Could not send message: " + String(sendErr));
+        setSending(false);
+        return;
+      }
+
       try {
         const bundleData = await api.fetchBundle(contact, 10);
         await api.startConversation(contact, bundleData, encoded);
       } catch (e) {
-        store.setError("Could not send message: " + String(e));
+        store.pushToast("Could not start conversation: " + String(e));
         setSending(false);
         return;
       }
@@ -103,9 +192,8 @@ const Chat: Component = () => {
     setInput("");
     setSending(false);
 
-    // Refresh message history
     try {
-      const msgs = await api.messageHistory(contact, 100);
+      const msgs = await api.messageHistory(contact, 200);
       store.setMessages(msgs);
     } catch {
       /* ignore */
@@ -124,11 +212,107 @@ const Chat: Component = () => {
     return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   };
 
+  const formatDateLabel = (ts: number) => {
+    const d = new Date(ts);
+    const today = new Date();
+    const yesterday = new Date();
+    yesterday.setDate(today.getDate() - 1);
+    const sameDay = (a: Date, b: Date) =>
+      a.getFullYear() === b.getFullYear() &&
+      a.getMonth() === b.getMonth() &&
+      a.getDate() === b.getDate();
+    if (sameDay(d, today)) return "Today";
+    if (sameDay(d, yesterday)) return "Yesterday";
+    return d.toLocaleDateString([], {
+      year: "numeric",
+      month: "short",
+      day: "2-digit",
+    });
+  };
+
   const decodeMessage = (msg: HistoryMessage): string => {
     try {
       return new TextDecoder().decode(new Uint8Array(msg.plaintext));
     } catch {
       return "[binary data]";
+    }
+  };
+
+  const activeContactName = createMemo(() => {
+    const a = store.activeContact();
+    if (!a) return "";
+    const c = store.contacts().find((x) => x.address === a);
+    return c?.display_name || a.slice(0, 16) + "…";
+  });
+
+  const myDisplayName = () => store.username() || "You";
+
+  const senderName = (m: HistoryMessage): string => {
+    if (m.outgoing) return myDisplayName();
+    const c = store.contacts().find((x) => x.address === m.contact_address);
+    return c?.display_name || m.contact_address.slice(0, 12) + "…";
+  };
+
+  // Build rows: group consecutive messages from same sender within 5 min;
+  // emit a date separator when day changes.
+  const rows = createMemo<MessageRow[]>(() => {
+    const list = store.messages();
+    const out: MessageRow[] = [];
+    const GROUP_MS = 5 * 60 * 1000;
+    let lastSender: string | null = null;
+    let lastTs = 0;
+    let lastDayKey = "";
+    for (const m of list) {
+      const d = new Date(m.timestamp_ms);
+      const dayKey = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+      const senderKey = (m.outgoing ? "_me_" : m.contact_address) + ":" + senderName(m);
+      const dateSeparator = dayKey !== lastDayKey ? formatDateLabel(m.timestamp_ms) : null;
+      const showHeader =
+        dateSeparator !== null ||
+        senderKey !== lastSender ||
+        m.timestamp_ms - lastTs > GROUP_MS;
+      out.push({ msg: m, showHeader, dateSeparator });
+      lastSender = senderKey;
+      lastTs = m.timestamp_ms;
+      lastDayKey = dayKey;
+    }
+    return out;
+  });
+
+  const startHeaderRename = () => {
+    const a = store.activeContact();
+    if (!a) return;
+    const c = store.contacts().find((x) => x.address === a);
+    if (!c) return;
+    setHeaderRenameValue(c.display_name || "");
+    setRenamingHeader(true);
+  };
+
+  const commitHeaderRename = async () => {
+    const a = store.activeContact();
+    if (!a) {
+      setRenamingHeader(false);
+      return;
+    }
+    const c = store.contacts().find((x) => x.address === a);
+    if (!c) {
+      setRenamingHeader(false);
+      return;
+    }
+    const next = headerRenameValue().trim();
+    if (next === c.display_name) {
+      setRenamingHeader(false);
+      return;
+    }
+    try {
+      await api.addContact(a, c.public_key, next);
+      const list = await api.listContacts();
+      store.setContacts(list);
+      store.pushToast("Contact renamed", "success", 1800);
+    } catch (e) {
+      store.pushToast("Rename failed: " + String(e));
+    } finally {
+      setRenamingHeader(false);
     }
   };
 
@@ -143,13 +327,9 @@ const Chat: Component = () => {
             <div class="chat-empty">
               <p class="chat-empty-title">No conversation selected</p>
               <p class="chat-empty-hint">
-                Choose a contact in the sidebar to open a thread. Only buttons and
-                links respond to clicks.
+                Pick a contact in the sidebar to open a chat. New incoming
+                messages will appear there automatically.
               </p>
-              <ul class="chat-empty-list">
-                <li>Messages appear here in plain bordered blocks.</li>
-                <li>Use the field below to type and Send.</li>
-              </ul>
             </div>
           }
         >
@@ -157,14 +337,50 @@ const Chat: Component = () => {
           <div class="chat-header">
             <div class="chat-header-info">
               <div class="chat-header-avatar">
-                {store.activeContact()?.slice(0, 2).toUpperCase()}
+                {(activeContactName() || "?").slice(0, 2).toUpperCase()}
               </div>
-              <div>
-                <h1 class="chat-header-name truncate">
-                  {store.contacts().find(
-                    (c) => c.address === store.activeContact(),
-                  )?.display_name || store.activeContact()}
-                </h1>
+              <div class="chat-header-text">
+                <Show
+                  when={renamingHeader()}
+                  fallback={
+                    <button
+                      type="button"
+                      class="chat-header-name-btn"
+                      title="Click to rename"
+                      onClick={startHeaderRename}
+                    >
+                      <span class="chat-header-name truncate">
+                        {activeContactName()}
+                      </span>
+                      <svg
+                        viewBox="0 0 24 24"
+                        class="chat-header-edit-icon"
+                        aria-hidden="true"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      >
+                        <path d="M12 20h9" />
+                        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+                      </svg>
+                    </button>
+                  }
+                >
+                  <input
+                    class="chat-header-rename"
+                    autofocus
+                    value={headerRenameValue()}
+                    onInput={(e) => setHeaderRenameValue(e.currentTarget.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") commitHeaderRename();
+                      else if (e.key === "Escape") setRenamingHeader(false);
+                    }}
+                    onBlur={commitHeaderRename}
+                    placeholder="display name"
+                  />
+                </Show>
                 <div class="chat-header-address truncate">
                   {store.activeContact()}
                 </div>
@@ -174,16 +390,46 @@ const Chat: Component = () => {
 
           {/* Messages */}
           <div class="chat-messages">
-            <For each={store.messages()}>
-              {(msg) => (
-                <div
-                  class={`chat-bubble ${msg.outgoing ? "outgoing" : "incoming"}`}
-                >
-                  <div class="chat-bubble-text">{decodeMessage(msg)}</div>
-                  <div class="chat-bubble-time">
-                    {formatTime(msg.timestamp_ms)}
+            <For each={rows()}>
+              {(row) => (
+                <>
+                  <Show when={row.dateSeparator}>
+                    <div class="chat-date-sep">
+                      <span>{row.dateSeparator}</span>
+                    </div>
+                  </Show>
+                  <div
+                    class={`chat-row ${row.showHeader ? "with-header" : "grouped"} ${
+                      row.msg.outgoing ? "outgoing" : "incoming"
+                    }`}
+                  >
+                    <div class="chat-row-gutter">
+                      <Show
+                        when={row.showHeader}
+                        fallback={
+                          <span class="chat-row-time-mini">
+                            {formatTime(row.msg.timestamp_ms)}
+                          </span>
+                        }
+                      >
+                        <div class="chat-row-avatar">
+                          {senderName(row.msg).slice(0, 2).toUpperCase()}
+                        </div>
+                      </Show>
+                    </div>
+                    <div class="chat-row-body">
+                      <Show when={row.showHeader}>
+                        <div class="chat-row-meta">
+                          <span class="chat-row-name">{senderName(row.msg)}</span>
+                          <span class="chat-row-time">
+                            {formatTime(row.msg.timestamp_ms)}
+                          </span>
+                        </div>
+                      </Show>
+                      <div class="chat-row-text">{decodeMessage(row.msg)}</div>
+                    </div>
                   </div>
-                </div>
+                </>
               )}
             </For>
             <div ref={messagesEnd} />
@@ -197,7 +443,7 @@ const Chat: Component = () => {
               value={input()}
               onInput={(e) => setInput(e.currentTarget.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Type a message…"
+              placeholder={`Message ${activeContactName()}…`}
             />
             <button
               type="button"

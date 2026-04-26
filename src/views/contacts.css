@@ -92,16 +92,89 @@
   font-size: var(--text-sm);
 }
 
+.contact-row-name-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.contact-row-icon-btn {
+  background: transparent;
+  border: none;
+  padding: 2px;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity var(--transition-fast), color var(--transition-fast);
+}
+
+.contact-row-icon-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.contact-row:hover .contact-row-icon-btn {
+  opacity: 1;
+}
+
+.contact-row-icon-btn:hover {
+  color: var(--text-primary);
+}
+
+.contact-row-rename {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  background: var(--bg-input);
+  border: 1px solid var(--accent);
+  padding: 2px 6px;
+  border-radius: 0;
+  outline: none;
+  color: var(--text-primary);
+  width: 100%;
+}
+
 .contact-row-addr {
   font-size: 0.7rem;
   color: var(--text-muted);
   font-family: var(--font-mono);
 }
 
+.contact-row-pk-toggle {
+  background: transparent;
+  border: none;
+  padding: 4px 0 0 0;
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  cursor: pointer;
+  text-align: left;
+  border-radius: 0;
+}
+
+.contact-row-pk-toggle:hover {
+  color: var(--text-primary);
+}
+
 .contact-row-pk {
   font-size: 0.65rem;
   color: var(--text-muted);
   font-family: var(--font-mono);
+  background: transparent;
+  border: none;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  width: 100%;
+  display: block;
+  border-radius: 0;
+}
+
+.contact-row-pk:hover {
+  color: var(--text-primary);
 }
 
 .contact-row-actions {

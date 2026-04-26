@@ -3,34 +3,33 @@
   display: flex;
   flex-direction: column;
   position: relative;
+  overflow: hidden;
 }
 
-.toast-error {
-  position: fixed;
-  bottom: 20px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: var(--danger);
-  color: var(--danger-on);
-  padding: 12px 20px;
-  border-radius: 0;
-  border: 2px solid var(--border);
-  font-size: var(--text-sm);
-  cursor: pointer;
-  z-index: 1000;
-  max-width: 480px;
-  text-align: center;
-  font-weight: 700;
-  animation: toast-in 0.2s ease;
+.app-content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
-@keyframes toast-in {
+/* View transition: re-keyed wrapper re-runs the fade-in animation */
+.view-fade {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  animation: view-fade-in 180ms ease;
+}
+
+@keyframes view-fade-in {
   from {
     opacity: 0;
-    transform: translateX(-50%) translateY(8px);
+    transform: translateY(4px);
   }
   to {
     opacity: 1;
-    transform: translateX(-50%) translateY(0);
+    transform: translateY(0);
   }
 }

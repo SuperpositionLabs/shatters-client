@@ -131,11 +131,15 @@ fn main() {
     let vcpkg_lib = vcpkg_installed_lib_dir(Path::new(&sdk_lib));
     println!("cargo:rustc-link-search=native={}", vcpkg_lib.display());
 
+    // Export the vcpkg lib dir so the main bin's build.rs can embed it as rpath.
+    println!("cargo:vcpkg-lib-dir={}", vcpkg_lib.display());
+
     println!("cargo:rustc-link-lib=sodium");
     println!("cargo:rustc-link-lib=sqlite3");
     println!("cargo:rustc-link-lib=dylib=msquic");
     println!("cargo:rustc-link-lib=static=spdlog");
     println!("cargo:rustc-link-lib=static=fmt");
+    println!("cargo:rustc-link-lib=crypto");
     println!("cargo:rustc-link-lib=stdc++");
 
     let header = header_path(&sdk_include);

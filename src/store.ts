@@ -1,20 +1,76 @@
 import { createSignal, createRoot } from "solid-js";
 import type { Contact, HistoryMessage } from "./api";
 
+export type ToastKind = "error" | "info" | "success";
+
+export interface Toast {
+  id: number;
+  kind: ToastKind;
+  message: string;
+  ttlMs: number;
+}
+
+let toastSeq = 0;
+
 function createAppStore() {
   const [connected, setConnected] = createSignal(false);
   const [address, setAddress] = createSignal("");
+  const [username, setUsername] = createSignal("");
   const [contacts, setContacts] = createSignal<Contact[]>([]);
   const [activeContact, setActiveContact] = createSignal<string | null>(null);
   const [messages, setMessages] = createSignal<HistoryMessage[]>([]);
-  const [error, setError] = createSignal<string | null>(null);
   const [view, setView] = createSignal<"login" | "chat" | "contacts" | "settings">("login");
+  const [toasts, setToasts] = createSignal<Toast[]>([]);
+
+  // unread counts keyed by contact address (does not include the active chat)
+  const [unread, setUnread] = createSignal<Record<string, number>>({});
+
+  const dismissToast = (id: number) => {
+    setToasts((cur) => cur.filter((t) => t.id !== id));
+  };
+
+  const pushToast = (message: string, kind: ToastKind = "error", ttlMs = 5000) => {
+    const id = ++toastSeq;
+    setToasts((cur) => [...cur, { id, kind, message, ttlMs }]);
+    if (ttlMs > 0) {
+      setTimeout(() => dismissToast(id), ttlMs);
+    }
+    return id;
+  };
+
+  // Backward-compat: setError(string) pushes an error toast; setError(null) clears all.
+  const setError = (msg: string | null) => {
+    if (msg === null) {
+      setToasts([]);
+      return;
+    }
+    pushToast(msg, "error");
+  };
+  const error = () => {
+    const errs = toasts().filter((t) => t.kind === "error");
+    return errs.length ? errs[errs.length - 1].message : null;
+  };
+
+  const incrementUnread = (addr: string) => {
+    setUnread((cur) => ({ ...cur, [addr]: (cur[addr] ?? 0) + 1 }));
+  };
+
+  const clearUnread = (addr: string) => {
+    setUnread((cur) => {
+      if (!cur[addr]) return cur;
+      const next = { ...cur };
+      delete next[addr];
+      return next;
+    });
+  };
 
   return {
     connected,
     setConnected,
     address,
     setAddress,
+    username,
+    setUsername,
     contacts,
     setContacts,
     activeContact,
@@ -25,6 +81,12 @@ function createAppStore() {
     setError,
     view,
     setView,
+    toasts,
+    pushToast,
+    dismissToast,
+    unread,
+    incrementUnread,
+    clearUnread,
   };
 }
 

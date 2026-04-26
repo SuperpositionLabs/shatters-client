@@ -74,6 +74,7 @@ const Login: Component = () => {
         port(),
       );
       store.setAddress(result.address);
+      store.setUsername(username().trim());
       store.setConnected(true);
 
       const contacts = await api.listContacts();
@@ -109,7 +110,7 @@ const Login: Component = () => {
   });
 
   return (
-    <div class="login">
+    <div class={`login ${settingsOpen() ? "settings-open" : ""}`}>
       <div class="login-card">
         <div class="login-brand">
           <img
@@ -161,8 +162,8 @@ const Login: Component = () => {
             </button>
             <button
               type="button"
-              class={`login-settings-btn ${settingsOpen() ? "active" : ""}`}
-              onClick={() => setSettingsOpen(!settingsOpen())}
+              class="login-settings-btn"
+              onClick={() => setSettingsOpen(true)}
               title="Client connection settings"
               aria-label="Settings"
               aria-expanded={settingsOpen()}
@@ -182,56 +183,6 @@ const Login: Component = () => {
               </svg>
             </button>
           </div>
-
-          {/* Inline collapsible settings */}
-          <div class={`login-settings-inline ${settingsOpen() ? "open" : ""}`}>
-            <div class="login-settings-inner">
-              <div class="login-settings-label">
-                <span class="login-settings-label-text">Connection</span>
-              </div>
-
-              <div class="login-row">
-                <label class="field login-field-server">
-                  <span class="field-label">Host</span>
-                  <input
-                    type="text"
-                    value={host()}
-                    onInput={(e) => setHost(e.currentTarget.value)}
-                    placeholder="127.0.0.1"
-                  />
-                </label>
-                <label class="field login-field-port">
-                  <span class="field-label">Port</span>
-                  <input
-                    type="number"
-                    value={port()}
-                    onInput={(e) =>
-                      setPort(parseInt(e.currentTarget.value) || 4433)
-                    }
-                  />
-                </label>
-              </div>
-
-              <div class="login-settings-label">
-                <span class="login-settings-label-text">Storage</span>
-              </div>
-
-              <label class="field">
-                <span class="field-label">Database folder</span>
-                <input
-                  type="text"
-                  value={dbDirectory()}
-                  onInput={(e) => setDbDirectory(e.currentTarget.value)}
-                  placeholder={DEFAULT_DB_DIR}
-                />
-              </label>
-
-              <div class="login-settings-preview">
-                <span class="login-settings-preview-label">Resolved path</span>
-                <span class="login-settings-preview-path">{resolvedDbPath()}</span>
-              </div>
-            </div>
-          </div>
         </div>
 
         <p class="login-footer">
@@ -245,6 +196,91 @@ const Login: Component = () => {
             Check out the Github Repo!
           </a>
         </p>
+      </div>
+
+      {/* Settings overlay panel — slides in from the right, covers the card */}
+      <div
+        class={`login-settings-panel ${settingsOpen() ? "open" : ""}`}
+        role="dialog"
+        aria-label="Connection settings"
+        aria-hidden={!settingsOpen()}
+      >
+        <div class="login-settings-header">
+          <button
+            type="button"
+            class="login-settings-back"
+            onClick={() => setSettingsOpen(false)}
+            aria-label="Back to login"
+            title="Back"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M19 12H5" />
+              <path d="M12 19l-7-7 7-7" />
+            </svg>
+          </button>
+          <span class="login-settings-title">Settings</span>
+        </div>
+
+        <div class="login-settings-body">
+          <div class="login-settings-section-label">Connection</div>
+
+          <div class="login-row">
+            <label class="field login-field-server">
+              <span class="field-label">Host</span>
+              <input
+                type="text"
+                value={host()}
+                onInput={(e) => setHost(e.currentTarget.value)}
+                placeholder="127.0.0.1"
+              />
+            </label>
+            <label class="field login-field-port">
+              <span class="field-label">Port</span>
+              <input
+                type="number"
+                value={port()}
+                onInput={(e) =>
+                  setPort(parseInt(e.currentTarget.value) || 4433)
+                }
+              />
+            </label>
+          </div>
+
+          <div class="login-settings-section-label">Storage</div>
+
+          <label class="field">
+            <span class="field-label">Database folder</span>
+            <input
+              type="text"
+              value={dbDirectory()}
+              onInput={(e) => setDbDirectory(e.currentTarget.value)}
+              placeholder={DEFAULT_DB_DIR}
+            />
+          </label>
+
+          <div class="login-settings-preview">
+            <span class="login-settings-preview-label">Resolved path</span>
+            <span class="login-settings-preview-path">{resolvedDbPath()}</span>
+          </div>
+        </div>
+
+        <div class="login-settings-footer">
+          <button
+            type="button"
+            class="btn btn-primary login-settings-done"
+            onClick={() => setSettingsOpen(false)}
+          >
+            DONE
+          </button>
+        </div>
       </div>
     </div>
   );
