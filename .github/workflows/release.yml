@@ -216,6 +216,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # On Windows runners under Git Bash, /usr/bin/link.exe (GNU link)
+          # shadows MSVC's link.exe and breaks rustc linking. Strip the
+          # Git-Bash /usr/bin entry from PATH for this step so rustc finds
+          # the MSVC linker exposed by ilammy/msvc-dev-cmd.
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            PATH="$(echo "$PATH" | tr ':' '\n' | grep -viE '^/usr/bin$|/Git/usr/bin$' | paste -sd: -)"
+            export PATH
+          fi
           if [ "${{ runner.os }}" = "Linux" ]; then
             # AppImage requires a 512x512+ square icon. Re-enable "appimage"
             # here once src-tauri/icons/icon.png is upgraded to 1024x1024.
