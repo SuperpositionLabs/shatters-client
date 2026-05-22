@@ -13,6 +13,7 @@ const Contacts: Component = () => {
   const [renaming, setRenaming] = createSignal<string | null>(null);
   const [renameValue, setRenameValue] = createSignal("");
   const [expanded, setExpanded] = createSignal<Record<string, boolean>>({});
+  const [removing, setRemoving] = createSignal<string | null>(null);
 
   const hexToBytes = (hex: string): number[] | null => {
     const clean = hex.replace(/\s/g, "");
@@ -88,12 +89,26 @@ const Contacts: Component = () => {
   };
 
   const handleRemove = async (addr: string) => {
+    if (removing()) return;
+    const c = store.contacts().find((x) => x.address === addr);
+    const label = c?.display_name || addr.slice(0, 16) + "…";
+    if (!window.confirm(`Remove contact "${label}"? This cannot be undone.`)) {
+      return;
+    }
+    setRemoving(addr);
     try {
       await api.removeContact(addr);
       const contacts = await api.listContacts();
       store.setContacts(contacts);
+      // If the chat was open with the removed contact, drop it so Chat
+      // doesn't try to load history for an address that no longer exists.
+      if (store.activeContact() === addr) {
+        store.setActiveContact(null);
+      }
     } catch (e) {
-      store.pushToast(String(e));
+      store.pushToast("Remove failed: " + String(e));
+    } finally {
+      setRemoving(null);
     }
   };
 
@@ -296,8 +311,9 @@ const Contacts: Component = () => {
                   <button
                     class="btn btn-danger"
                     onClick={() => handleRemove(contact.address)}
+                    disabled={removing() === contact.address}
                   >
-                    Remove
+                    {removing() === contact.address ? "Removing…" : "Remove"}
                   </button>
                 </div>
               </div>
