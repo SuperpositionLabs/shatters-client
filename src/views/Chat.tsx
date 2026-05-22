@@ -78,8 +78,12 @@ const Chat: Component = () => {
     lastSeenTailId = null;
     try {
       const msgs = await api.messageHistory(contact, 200);
+      // Bail if the user switched contacts while history was loading;
+      // otherwise A's history can overwrite B's after a fast switch.
+      if (store.activeContact() !== contact) return;
       store.setMessages(msgs);
     } catch (e) {
+      if (store.activeContact() !== contact) return;
       store.pushToast(String(e));
     }
   });
