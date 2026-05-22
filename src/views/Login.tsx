@@ -85,11 +85,19 @@ const Login: Component = () => {
 
       await api.resumeConversations();
 
-      // Upload prekey bundle so other users can initiate conversations with us
+      // Upload prekey bundle so other users can initiate conversations with us.
+      // Surface failure as a long-lived warning toast: without a bundle, peers
+      // cannot start new conversations with this account.
       try {
         await api.uploadPrekeyBundle(20);
-      } catch {
-        /* non-critical — user can do this later from Settings */
+      } catch (e) {
+        store.pushToast(
+          "Prekey bundle upload failed: " +
+            String(e) +
+            ". Others won't be able to start new conversations with you until you retry from Settings.",
+          "error",
+          12000,
+        );
       }
 
       store.setView("chat");
