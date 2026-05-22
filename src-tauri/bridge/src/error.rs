@@ -37,7 +37,7 @@ pub(crate) fn check_status(mut status: ffi::ShattersStatus) -> BridgeResult<()> 
     };
 
     Err(BridgeError::Sdk {
-        code: status.code,
+        code: status.code as u32,
         message,
     })
 }
