@@ -4,15 +4,66 @@ use tauri::{Emitter, State};
 
 use crate::AppState;
 
-type CmdResult<T> = Result<T, String>;
+/// Structured error sent to the frontend.
+///
+/// `kind` lets the UI distinguish SDK errors that have UX implications
+/// (e.g. NoSession triggers the X3DH bootstrap flow on first send) without
+/// substring-sniffing on the human-readable message.
+#[derive(Debug, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum CmdError {
+    /// Bridge or SDK reported that the contact has no active ratchet
+    /// session. The UI should attempt `fetch_bundle` + `start_conversation`.
+    NoSession { message: String },
+    /// Generic SDK error with the underlying code.
+    Sdk { code: u32, message: String },
+    /// Anything else — client not initialised, lock poisoned, FFI string
+    /// conversion failures, etc.
+    Other { message: String },
+}
+
+impl From<BridgeError> for CmdError {
+    fn from(e: BridgeError) -> Self {
+        match e {
+            BridgeError::Sdk { code, message } => {
+                let low = message.to_lowercase();
+                if low.contains("no session") || low.contains("ratchet not loaded") {
+                    CmdError::NoSession { message }
+                } else {
+                    CmdError::Sdk { code, message }
+                }
+            }
+            BridgeError::Other(message) => CmdError::Other { message },
+        }
+    }
+}
+
+impl From<String> for CmdError {
+    fn from(message: String) -> Self {
+        CmdError::Other { message }
+    }
+}
+
+impl From<&str> for CmdError {
+    fn from(s: &str) -> Self {
+        CmdError::Other { message: s.to_string() }
+    }
+}
+
+type CmdResult<T> = Result<T, CmdError>;
 
 fn with_client<F, T>(state: &State<AppState>, f: F) -> CmdResult<T>
 where
     F: FnOnce(&Client) -> Result<T, BridgeError>,
 {
-    let guard = state.client.lock().map_err(|e| e.to_string())?;
-    let client = guard.as_ref().ok_or("client not initialised")?;
-    f(client).map_err(|e| e.to_string())
+    let guard = state
+        .client
+        .lock()
+        .map_err(|e| CmdError::Other { message: e.to_string() })?;
+    let client = guard
+        .as_ref()
+        .ok_or_else(|| CmdError::Other { message: "client not initialised".into() })?;
+    f(client).map_err(CmdError::from)
 }
 
 #[derive(Serialize)]
@@ -38,11 +89,10 @@ pub fn connect(
     server_port: u16,
 ) -> CmdResult<ConnectResult> {
     let client =
-        Client::create(&db_path, &db_pass, &server_host, server_port, None, true)
-            .map_err(|e| e.to_string())?;
-    client.connect().map_err(|e| e.to_string())?;
+        Client::create(&db_path, &db_pass, &server_host, server_port, None, true)?;
+    client.connect()?;
 
-    let address = client.address().map_err(|e| e.to_string())?;
+    let address = client.address()?;
 
     // Register incoming-message callback → emit Tauri event
     let app_handle = app.clone();
@@ -58,14 +108,20 @@ pub fn connect(
         );
     });
 
-    *state.client.lock().map_err(|e| e.to_string())? = Some(client);
+    *state
+        .client
+        .lock()
+        .map_err(|e| CmdError::Other { message: e.to_string() })? = Some(client);
 
     Ok(ConnectResult { address })
 }
 
 #[tauri::command]
 pub fn disconnect(state: State<AppState>) -> CmdResult<()> {
-    let mut guard = state.client.lock().map_err(|e| e.to_string())?;
+    let mut guard = state
+        .client
+        .lock()
+        .map_err(|e| CmdError::Other { message: e.to_string() })?;
     if let Some(c) = guard.take() {
         c.disconnect();
     }
@@ -74,7 +130,10 @@ pub fn disconnect(state: State<AppState>) -> CmdResult<()> {
 
 #[tauri::command]
 pub fn is_connected(state: State<AppState>) -> CmdResult<bool> {
-    let guard = state.client.lock().map_err(|e| e.to_string())?;
+    let guard = state
+        .client
+        .lock()
+        .map_err(|e| CmdError::Other { message: e.to_string() })?;
     Ok(guard.as_ref().map(|c| c.is_connected()).unwrap_or(false))
 }
 

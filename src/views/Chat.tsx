@@ -1,6 +1,6 @@
 import { Component, For, Show, createSignal, createEffect, onMount, onCleanup, createMemo } from "solid-js";
 import { store } from "../store";
-import { api, type HistoryMessage } from "../api";
+import { api, BackendError, type HistoryMessage } from "../api";
 import Sidebar from "../components/Sidebar";
 import "./chat.css";
 
@@ -249,9 +249,8 @@ const Chat: Component = () => {
     try {
       await api.sendMessage(contact, encoded);
     } catch (sendErr) {
-      const errMsg = String(sendErr).toLowerCase();
       const isNoSession =
-        errMsg.includes("no session") || errMsg.includes("ratchet not loaded");
+        sendErr instanceof BackendError && sendErr.kind === "no_session";
 
       if (!isNoSession) {
         store.pushToast("Could not send message: " + String(sendErr));

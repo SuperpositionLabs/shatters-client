@@ -4,13 +4,48 @@ function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
+export type BackendErrorKind = "no_session" | "sdk" | "other";
+
+/**
+ * Error thrown from any Tauri command. `kind` lets callers branch on
+ * meaningful classes of failure (e.g. NoSession triggers X3DH bootstrap)
+ * without sniffing on the human-readable `message`.
+ */
+export class BackendError extends Error {
+  kind: BackendErrorKind;
+  code?: number;
+
+  constructor(payload: unknown) {
+    let message = "";
+    let kind: BackendErrorKind = "other";
+    let code: number | undefined;
+    if (payload && typeof payload === "object") {
+      const p = payload as { kind?: string; message?: string; code?: number };
+      message = p.message ?? "";
+      if (p.kind === "no_session" || p.kind === "sdk" || p.kind === "other") {
+        kind = p.kind;
+      }
+      code = p.code;
+    } else if (typeof payload === "string") {
+      message = payload;
+    } else {
+      message = String(payload);
+    }
+    super(message || "backend error");
+    this.kind = kind;
+    this.code = code;
+  }
+}
+
 function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   if (!isTauri()) {
     return Promise.reject(
       new Error("Not running inside Tauri. Use 'cargo tauri dev' instead of 'npm run dev'."),
     );
   }
-  return invoke<T>(cmd, args);
+  return invoke<T>(cmd, args).catch((e) => {
+    throw new BackendError(e);
+  });
 }
 
 export interface ConnectResult {
