@@ -85,12 +85,20 @@ fn default_sdk_build_dir(manifest_dir: &Path) -> PathBuf {
     preset_dir
 }
 
+fn bundled_sdk_root(manifest_dir: &Path) -> PathBuf {
+    manifest_dir.join("../../shatters-sdk")
+}
+
+fn sibling_sdk_root(manifest_dir: &Path) -> PathBuf {
+    manifest_dir.join("../../../shatters-sdk")
+}
+
 fn bundled_sdk_include(manifest_dir: &Path) -> PathBuf {
-    manifest_dir.join("../../shatters-sdk/include")
+    bundled_sdk_root(manifest_dir).join("include")
 }
 
 fn sibling_sdk_include(manifest_dir: &Path) -> PathBuf {
-    manifest_dir.join("../../../shatters-sdk/include")
+    sibling_sdk_root(manifest_dir).join("include")
 }
 
 /// Returns the SDK root directory if `SHATTERS_SDK_DIR` is set and looks
@@ -104,6 +112,45 @@ fn sdk_dir_env() -> Option<PathBuf> {
     }
 }
 
+/// Resolve a canonical SDK root that has BOTH the C header and a built
+/// static lib. Without this, include and lib resolution can disagree
+/// (e.g. one branch of the SDK ships the C ABI header but the sibling
+/// checkout on disk is on a feature branch that hasn't merged it yet,
+/// so the lib lacks the `shatters_*` symbols even though bindgen sees
+/// them via the bundled submodule's header).
+fn resolve_sdk_root(manifest_dir: &Path) -> Option<PathBuf> {
+    let profile = env::var("PROFILE").unwrap_or_else(|_| "debug".into());
+    let preset = cmake_preset_dir_name(&profile);
+
+    let candidates: Vec<PathBuf> = [
+        sdk_dir_env(),
+        Some(sibling_sdk_root(manifest_dir)),
+        Some(bundled_sdk_root(manifest_dir)),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+
+    for root in &candidates {
+        if !header_path(&root.join("include")).is_file() {
+            continue;
+        }
+        let preset_dir = root.join("build").join(preset);
+        if locate_lib_in_preset(&preset_dir).is_some() {
+            return Some(root.clone());
+        }
+    }
+
+    // No root has both header + lib. Fall back to the first one with at
+    // least a header (so bindgen still works and the lib error is loud).
+    for root in &candidates {
+        if header_path(&root.join("include")).is_file() {
+            return Some(root.clone());
+        }
+    }
+    None
+}
+
 fn resolve_sdk_include(manifest_dir: &Path) -> PathBuf {
     if let Ok(p) = env::var("SHATTERS_SDK_INCLUDE") {
         let pb = PathBuf::from(&p);
@@ -111,18 +158,10 @@ fn resolve_sdk_include(manifest_dir: &Path) -> PathBuf {
             return pb;
         }
     }
-    if let Some(root) = sdk_dir_env() {
+    if let Some(root) = resolve_sdk_root(manifest_dir) {
         let inc = root.join("include");
         if header_path(&inc).is_file() {
             return inc;
-        }
-    }
-    for candidate in [
-        sibling_sdk_include(manifest_dir),
-        bundled_sdk_include(manifest_dir),
-    ] {
-        if header_path(&candidate).is_file() {
-            return candidate;
         }
     }
     sibling_sdk_include(manifest_dir)
@@ -139,7 +178,7 @@ fn resolve_sdk_lib(manifest_dir: &Path) -> PathBuf {
             return pb;
         }
     }
-    if let Some(root) = sdk_dir_env() {
+    if let Some(root) = resolve_sdk_root(manifest_dir) {
         let profile = env::var("PROFILE").unwrap_or_else(|_| "debug".into());
         let preset_dir = root.join("build").join(cmake_preset_dir_name(&profile));
         if let Some(p) = locate_lib_in_preset(&preset_dir) {
