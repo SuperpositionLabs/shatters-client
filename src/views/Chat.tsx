@@ -157,7 +157,10 @@ const Chat: Component = () => {
 
     const { listen } = await import("@tauri-apps/api/event");
 
-    const unlisten = await listen<{ from?: string }>(
+    let unlisten: (() => void) | null = null;
+    let cancelled = false;
+
+    const listenPromise = listen<{ from?: string }>(
       "shatters://message",
       async (e) => {
         const fromAddr = (e.payload && e.payload.from) || null;
@@ -203,7 +206,36 @@ const Chat: Component = () => {
       },
     );
 
-    onCleanup(() => unlisten());
+    listenPromise.then((fn) => {
+      if (cancelled) {
+        fn();
+        return;
+      }
+      unlisten = fn;
+
+      // Once the listener is registered, do a one-shot history refresh
+      // to catch any message that arrived in the gap between mount and
+      // listen() resolving. Without this, those messages would be lost
+      // until the 30s backstop poll fires.
+      const active = store.activeContact();
+      if (active) {
+        api
+          .messageHistory(active, 200)
+          .then((msgs) => {
+            if (store.activeContact() === active) {
+              store.setMessages((prev) => mergeMessages(prev, msgs));
+            }
+          })
+          .catch(() => {
+            /* ignore */
+          });
+      }
+    });
+
+    onCleanup(() => {
+      cancelled = true;
+      if (unlisten) unlisten();
+    });
   });
 
   const handleSend = async () => {
