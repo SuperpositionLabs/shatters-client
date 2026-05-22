@@ -10,7 +10,12 @@ const Sidebar: Component = () => {
   const handleDisconnect = async () => {
     try {
       await api.disconnect();
-    } catch (_) {}
+    } catch (e) {
+      // Still drop the UI back to login — leaving the user stuck on the
+      // chat view with no working session is worse than a stale handle
+      // on the backend — but tell them so they can investigate.
+      store.pushToast("Disconnect reported an error: " + String(e), "error", 5000);
+    }
     store.setConnected(false);
     store.setAddress("");
     store.setUsername("");
