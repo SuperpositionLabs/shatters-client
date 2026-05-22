@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use serde::Serialize;
 use shatters_bridge::{client::Contact, client::HistoryMessage, BridgeError, Client};
 use tauri::{Emitter, State};
@@ -52,18 +54,24 @@ impl From<&str> for CmdError {
 
 type CmdResult<T> = Result<T, CmdError>;
 
+/// Clone the active client `Arc` out of the lock and release the lock
+/// before invoking `f`. This way a slow SDK call doesn't block other
+/// commands the way a single-`Mutex` design did.
 fn with_client<F, T>(state: &State<AppState>, f: F) -> CmdResult<T>
 where
     F: FnOnce(&Client) -> Result<T, BridgeError>,
 {
-    let guard = state
-        .client
-        .lock()
-        .map_err(|e| CmdError::Other { message: e.to_string() })?;
-    let client = guard
-        .as_ref()
-        .ok_or_else(|| CmdError::Other { message: "client not initialised".into() })?;
-    f(client).map_err(CmdError::from)
+    let client = {
+        let guard = state
+            .client
+            .read()
+            .map_err(|e| CmdError::Other { message: e.to_string() })?;
+        guard
+            .as_ref()
+            .ok_or_else(|| CmdError::Other { message: "client not initialised".into() })?
+            .clone()
+    };
+    f(&client).map_err(CmdError::from)
 }
 
 #[derive(Serialize)]
@@ -110,19 +118,20 @@ pub fn connect(
 
     *state
         .client
-        .lock()
-        .map_err(|e| CmdError::Other { message: e.to_string() })? = Some(client);
+        .write()
+        .map_err(|e| CmdError::Other { message: e.to_string() })? = Some(Arc::new(client));
 
     Ok(ConnectResult { address })
 }
 
 #[tauri::command]
 pub fn disconnect(state: State<AppState>) -> CmdResult<()> {
-    let mut guard = state
+    let taken = state
         .client
-        .lock()
-        .map_err(|e| CmdError::Other { message: e.to_string() })?;
-    if let Some(c) = guard.take() {
+        .write()
+        .map_err(|e| CmdError::Other { message: e.to_string() })?
+        .take();
+    if let Some(c) = taken {
         c.disconnect();
     }
     Ok(())
@@ -132,7 +141,7 @@ pub fn disconnect(state: State<AppState>) -> CmdResult<()> {
 pub fn is_connected(state: State<AppState>) -> CmdResult<bool> {
     let guard = state
         .client
-        .lock()
+        .read()
         .map_err(|e| CmdError::Other { message: e.to_string() })?;
     Ok(guard.as_ref().map(|c| c.is_connected()).unwrap_or(false))
 }
