@@ -14,6 +14,8 @@ const Contacts: Component = () => {
   const [renameValue, setRenameValue] = createSignal("");
   const [expanded, setExpanded] = createSignal<Record<string, boolean>>({});
   const [removing, setRemoving] = createSignal<string | null>(null);
+  // Escape sets this so a subsequent blur doesn't commit the rename.
+  let renameCancelled = false;
 
   const hexToBytes = (hex: string): number[] | null => {
     const clean = hex.replace(/\s/g, "");
@@ -116,16 +118,22 @@ const Contacts: Component = () => {
     bytes.map((b) => b.toString(16).padStart(2, "0")).join("");
 
   const startRename = (addr: string, current: string) => {
+    renameCancelled = false;
     setRenaming(addr);
     setRenameValue(current);
   };
 
   const cancelRename = () => {
+    renameCancelled = true;
     setRenaming(null);
     setRenameValue("");
   };
 
   const commitRename = async (addr: string) => {
+    if (renameCancelled) {
+      renameCancelled = false;
+      return;
+    }
     const c = store.contacts().find((x) => x.address === addr);
     if (!c) return cancelRename();
     const next = renameValue().trim();

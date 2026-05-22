@@ -6,6 +6,8 @@ import "./sidebar.css";
 const Sidebar: Component = () => {
   const [renaming, setRenaming] = createSignal<string | null>(null);
   const [renameValue, setRenameValue] = createSignal("");
+  // Escape sets this so a subsequent blur doesn't commit the rename.
+  let renameCancelled = false;
 
   const handleDisconnect = async () => {
     try {
@@ -35,16 +37,22 @@ const Sidebar: Component = () => {
   };
 
   const startRename = (addr: string, current: string) => {
+    renameCancelled = false;
     setRenaming(addr);
     setRenameValue(current);
   };
 
   const cancelRename = () => {
+    renameCancelled = true;
     setRenaming(null);
     setRenameValue("");
   };
 
   const commitRename = async (addr: string) => {
+    if (renameCancelled) {
+      renameCancelled = false;
+      return;
+    }
     const next = renameValue().trim();
     const c = store.contacts().find((x) => x.address === addr);
     if (!c) {

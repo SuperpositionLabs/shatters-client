@@ -35,6 +35,9 @@ const Chat: Component = () => {
   const [sending, setSending] = createSignal(false);
   const [renamingHeader, setRenamingHeader] = createSignal(false);
   const [headerRenameValue, setHeaderRenameValue] = createSignal("");
+  // Escape sets this so the subsequent blur (e.g. when focus moves away)
+  // doesn't commit the rename with whatever was typed.
+  let headerRenameCancelled = false;
   let messagesEnd: HTMLDivElement | undefined;
   let messagesContainer: HTMLDivElement | undefined;
 
@@ -389,10 +392,21 @@ const Chat: Component = () => {
     const c = store.contacts().find((x) => x.address === a);
     if (!c) return;
     setHeaderRenameValue(c.display_name || "");
+    headerRenameCancelled = false;
     setRenamingHeader(true);
   };
 
+  const cancelHeaderRename = () => {
+    headerRenameCancelled = true;
+    setRenamingHeader(false);
+  };
+
   const commitHeaderRename = async () => {
+    if (headerRenameCancelled) {
+      headerRenameCancelled = false;
+      setRenamingHeader(false);
+      return;
+    }
     const a = store.activeContact();
     if (!a) {
       setRenamingHeader(false);
@@ -479,7 +493,7 @@ const Chat: Component = () => {
                     onInput={(e) => setHeaderRenameValue(e.currentTarget.value)}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") commitHeaderRename();
-                      else if (e.key === "Escape") setRenamingHeader(false);
+                      else if (e.key === "Escape") cancelHeaderRename();
                     }}
                     onBlur={commitHeaderRename}
                     placeholder="display name"
