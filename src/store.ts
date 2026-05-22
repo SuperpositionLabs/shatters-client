@@ -29,9 +29,21 @@ function createAppStore() {
     setToasts((cur) => cur.filter((t) => t.id !== id));
   };
 
+  // Visible-toast cap. A rapid burst of failures (e.g. a relay outage hitting
+  // every in-flight command) would otherwise stack dozens of toasts that
+  // bury the UI; we drop the oldest of the same kind once over the cap.
+  const MAX_TOASTS_PER_KIND = 5;
+
   const pushToast = (message: string, kind: ToastKind = "error", ttlMs = 5000) => {
     const id = ++toastSeq;
-    setToasts((cur) => [...cur, { id, kind, message, ttlMs }]);
+    setToasts((cur) => {
+      const next = [...cur, { id, kind, message, ttlMs }];
+      const sameKind = next.filter((t) => t.kind === kind);
+      if (sameKind.length <= MAX_TOASTS_PER_KIND) return next;
+      const overflow = sameKind.length - MAX_TOASTS_PER_KIND;
+      const toDrop = new Set(sameKind.slice(0, overflow).map((t) => t.id));
+      return next.filter((t) => !toDrop.has(t.id));
+    });
     if (ttlMs > 0) {
       setTimeout(() => dismissToast(id), ttlMs);
     }
