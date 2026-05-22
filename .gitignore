@@ -38,6 +38,12 @@ src-tauri/target/
 src-tauri/**/target/
 **/*.rs.bk
 
+# Runtime DLLs staged by CI from the SDK's vcpkg build. The directory
+# itself stays via .gitkeep so tauri.conf.json's resources glob always
+# resolves.
+src-tauri/runtime-deps/*
+!src-tauri/runtime-deps/.gitkeep
+
 # -----------------------------
 # CMake / C++ (SDK)
 # -----------------------------

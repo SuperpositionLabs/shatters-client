@@ -185,6 +185,28 @@ jobs:
           VCPKG_ROOT: ${{ github.workspace }}/../vcpkg
         run: cmake --build build/${{ matrix.platform.sdk_build_dir }} --target shatters-sdk --config Release -j
 
+      # vcpkg on x64-windows builds these as DLLs. The .lib we link is only
+      # the import lib — the DLLs themselves must travel next to the .exe.
+      # Stage them under src-tauri/runtime-deps/ so tauri.conf.json's
+      # bundle.resources glob can pick them up.
+      - name: Stage runtime DLLs (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          SRC="${{ github.workspace }}/../shatters-sdk/build/${{ matrix.platform.sdk_build_dir }}/vcpkg_installed/x64-windows/bin"
+          DST="src-tauri/runtime-deps"
+          mkdir -p "$DST"
+          for dll in spdlog fmt libsodium sqlite3 msquic; do
+            f="$SRC/${dll}.dll"
+            if [ -f "$f" ]; then
+              cp -v "$f" "$DST/"
+            else
+              echo "::warning::missing $f — runtime may fail to load"
+            fi
+          done
+          ls -la "$DST"
+
       # ----- Frontend + Tauri bundle -----------------------------------------
 
       - name: Install npm dependencies
