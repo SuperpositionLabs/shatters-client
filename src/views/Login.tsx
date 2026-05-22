@@ -133,7 +133,13 @@ const Login: Component = () => {
 
         <div class="login-divider" />
 
-        <div class="login-form">
+        <form
+          class="login-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!loading()) handleConnect();
+          }}
+        >
           <label class="field">
             <span class="field-label">Username</span>
             <input
@@ -152,18 +158,14 @@ const Login: Component = () => {
               type="password"
               value={dbPass()}
               onInput={(e) => setDbPass(e.currentTarget.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleConnect();
-              }}
             />
             <span class="field-hint">Local database encryption passphrase.</span>
           </label>
 
           <div class="login-actions">
             <button
-              type="button"
+              type="submit"
               class="btn btn-primary login-btn"
-              onClick={handleConnect}
               disabled={loading()}
             >
               {loading() ? "CONNECTING" : "CONNECT"}
@@ -191,7 +193,7 @@ const Login: Component = () => {
               </svg>
             </button>
           </div>
-        </div>
+        </form>
 
         <p class="login-footer">
           Don't have a server?{" "}
