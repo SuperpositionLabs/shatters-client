@@ -89,15 +89,33 @@ const Chat: Component = () => {
   });
 
   // Backstop poll (rare; the event listener already handles real-time updates).
+  // After several consecutive failures we surface a single warning so the user
+  // notices when the relay connection has silently dropped instead of believing
+  // their chat is just quiet.
   createEffect(() => {
     const contact = store.activeContact();
     if (!contact) return;
+    let consecutiveFailures = 0;
+    let warned = false;
     const timer = setInterval(async () => {
       try {
         const msgs = await api.messageHistory(contact, 200);
+        consecutiveFailures = 0;
+        if (warned) {
+          store.pushToast("Reconnected to relay.", "success", 2500);
+          warned = false;
+        }
         store.setMessages((prev) => mergeMessages(prev, msgs));
       } catch {
-        /* ignore */
+        consecutiveFailures++;
+        if (consecutiveFailures >= 2 && !warned) {
+          store.pushToast(
+            "Lost connection to the relay. Reconnecting in the background…",
+            "error",
+            8000,
+          );
+          warned = true;
+        }
       }
     }, 30000);
     onCleanup(() => clearInterval(timer));
