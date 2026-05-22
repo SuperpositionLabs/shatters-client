@@ -58,6 +58,13 @@ const Contacts: Component = () => {
 
     try {
       const bundleData = await api.fetchBundle(addr, 8);
+      if (bundleData.length < 32) {
+        store.pushToast(
+          `Received a malformed bundle (${bundleData.length} bytes; expected at least 32). The relay or peer is misbehaving.`,
+        );
+        setAdding(false);
+        return;
+      }
       const pk = bundleData.slice(0, 32);
       await api.addContact(addr, pk, displayName());
       setAddress("");
@@ -65,11 +72,14 @@ const Contacts: Component = () => {
       const contacts = await api.listContacts();
       store.setContacts(contacts);
       store.pushToast("Contact added", "success", 1800);
-    } catch {
+    } catch (e) {
+      // Show the real underlying error so the user can distinguish
+      // "server unreachable" from "address has no bundle uploaded" from
+      // "address is malformed".
       store.pushToast(
-        "Could not resolve this address. They may be offline. You can enter the public key manually.",
+        `Could not resolve "${addr}": ${String(e)}. You can paste the public key manually below.`,
         "info",
-        7000,
+        8000,
       );
       setShowManualKey(true);
     } finally {
