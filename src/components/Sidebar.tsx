@@ -32,7 +32,21 @@ const Sidebar: Component = () => {
       await navigator.clipboard.writeText(store.address());
       store.pushToast("Address copied", "success", 1800);
     } catch {
-      store.pushToast("Could not copy address", "error", 2500);
+      // Clipboard API can be blocked; fall back to selecting the address
+      // text so the user can Ctrl/Cmd+C it themselves.
+      const el = document.querySelector(".sidebar-user-addr");
+      const sel = window.getSelection();
+      if (el && sel) {
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+      store.pushToast(
+        "Could not copy automatically — address selected, press Ctrl/Cmd+C",
+        "info",
+        4000,
+      );
     }
   };
 

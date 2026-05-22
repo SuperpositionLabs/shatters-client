@@ -1,4 +1,4 @@
-import { Component, createSignal, onMount, onCleanup, createEffect } from "solid-js";
+import { Component, createSignal, onMount, onCleanup } from "solid-js";
 import { store } from "../store";
 import { api } from "../api";
 import "./login.css";
@@ -66,13 +66,15 @@ const Login: Component = () => {
   const handleConnect = async () => {
     setLoading(true);
     try {
-      persistPrefs();
       const result = await api.connect(
         resolvedDbPath(),
         dbPass(),
         host(),
         port(),
       );
+      // Only persist after a successful connect — otherwise trying a
+      // throwaway username/host and failing leaves stale values sticky.
+      persistPrefs();
       store.setAddress(result.address);
       store.setUsername(username().trim());
       store.setConnected(true);
@@ -108,14 +110,10 @@ const Login: Component = () => {
     }
   };
 
-  /* auto-persist whenever a settings field changes */
-  createEffect(() => {
-    host();
-    port();
-    dbDirectory();
-    username();
-    persistPrefs();
-  });
+  // We deliberately do NOT auto-persist on every keystroke: trying a
+  // throwaway username and bailing out would otherwise leave it sticky
+  // on next launch. persistPrefs() is called only after a successful
+  // connect, in handleConnect().
 
   return (
     <div class={`login ${settingsOpen() ? "settings-open" : ""}`}>

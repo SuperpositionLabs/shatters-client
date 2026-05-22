@@ -158,7 +158,21 @@ const Contacts: Component = () => {
       await navigator.clipboard.writeText(hex);
       store.pushToast("Public key copied", "success", 1500);
     } catch {
-      store.pushToast("Could not copy", "error");
+      // Clipboard API can be blocked by permissions (especially in WKWebView).
+      // Fall back to selecting the text so the user can Ctrl/Cmd+C manually.
+      const sel = window.getSelection();
+      const range = document.createRange();
+      const node = document.activeElement;
+      if (node && sel) {
+        range.selectNodeContents(node);
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+      store.pushToast(
+        "Could not copy automatically — text selected, press Ctrl/Cmd+C",
+        "info",
+        4000,
+      );
     }
   };
 

@@ -49,6 +49,13 @@ const Chat: Component = () => {
   };
 
   const scrollToBottom = (smooth = true) => {
+    // Use a direct scrollTop jump for the non-smooth path: scrollIntoView
+    // can stutter on long histories, especially during initial load when
+    // the layout is still settling.
+    if (!smooth && messagesContainer) {
+      messagesContainer.scrollTop = messagesContainer.scrollHeight;
+      return;
+    }
     messagesEnd?.scrollIntoView({ behavior: smooth ? "smooth" : "auto" });
   };
 
@@ -331,8 +338,12 @@ const Chat: Component = () => {
   };
 
   const decodeMessage = (msg: HistoryMessage): string => {
+    // fatal:true → non-UTF-8 throws instead of rendering replacement
+    // characters / garbled text, so binary payloads fall into the catch.
     try {
-      return new TextDecoder().decode(new Uint8Array(msg.plaintext));
+      return new TextDecoder("utf-8", { fatal: true }).decode(
+        new Uint8Array(msg.plaintext),
+      );
     } catch {
       return "[binary data]";
     }
