@@ -110,16 +110,53 @@ const App: Component = () => {
   });
 
   // Track focus so message notifications only fire when window is hidden / blurred.
+  //
+  // Listening only to DOM focus/blur is unreliable for a Tauri webview: when
+  // the user minimizes to the tray on some platforms, neither event fires
+  // (the webview just stops painting). Combine three signals so the state
+  // stays accurate across minimize, hide, tray, and ordinary focus loss:
+  //   - DOM window focus/blur     (most reliable in foreground)
+  //   - document.visibilitychange (catches tab/hide)
+  //   - Tauri tauri://focus/blur  (catches OS-level focus on the native window)
   const [focused, setFocused] = createSignal(true);
   onMount(() => {
     const onFocus = () => setFocused(true);
     const onBlur = () => setFocused(false);
+    const onVisibility = () => setFocused(document.visibilityState === "visible");
     window.addEventListener("focus", onFocus);
     window.addEventListener("blur", onBlur);
-    setFocused(document.hasFocus());
+    document.addEventListener("visibilitychange", onVisibility);
+    setFocused(document.hasFocus() && document.visibilityState === "visible");
+
+    let unlistenFocus: (() => void) | null = null;
+    let unlistenBlur: (() => void) | null = null;
+    let cancelled = false;
+    (async () => {
+      try {
+        const win = getCurrentWindow();
+        const [uf, ub] = await Promise.all([
+          win.listen("tauri://focus", () => setFocused(true)),
+          win.listen("tauri://blur", () => setFocused(false)),
+        ]);
+        if (cancelled) {
+          uf();
+          ub();
+        } else {
+          unlistenFocus = uf;
+          unlistenBlur = ub;
+        }
+      } catch {
+        /* not running in Tauri */
+      }
+    })();
+
     onCleanup(() => {
+      cancelled = true;
       window.removeEventListener("focus", onFocus);
       window.removeEventListener("blur", onBlur);
+      document.removeEventListener("visibilitychange", onVisibility);
+      if (unlistenFocus) unlistenFocus();
+      if (unlistenBlur) unlistenBlur();
     });
   });
   (window as any).__shattersFocused = focused;
